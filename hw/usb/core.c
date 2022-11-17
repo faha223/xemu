@@ -759,6 +759,12 @@ void usb_ep_set_type(USBDevice *dev, int pid, int ep, uint8_t type)
     uep->type = type;
 }
 
+void usb_ep_set_interval(USBDevice *dev, int pid, int ep, uint8_t interval)
+{
+    struct USBEndpoint *uep = usb_ep_get(dev, pid, ep);
+    uep->interval = interval;
+}
+
 void usb_ep_set_ifnum(USBDevice *dev, int pid, int ep, uint8_t ifnum)
 {
     struct USBEndpoint *uep = usb_ep_get(dev, pid, ep);

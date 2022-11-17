@@ -207,6 +207,7 @@ struct USBEndpoint {
     uint8_t pid;
     uint8_t type;
     uint8_t ifnum;
+    uint8_t interval;
     int max_packet_size;
     int max_streams;
     bool pipeline;
