@@ -930,6 +930,8 @@ static void usb_host_ep_update(USBHostDevice *s)
             usb_ep_set_type(udev, pid, ep, type);
             usb_ep_set_ifnum(udev, pid, ep, i);
             usb_ep_set_halted(udev, pid, ep, 0);
+            usb_ep_set_interval(udev, pid, ep, endp->bInterval);
+            printf("Endpoint: %02x, Direction: %s, Interval: %d\n", ep, (devep & USB_DIR_IN) ? "in" : "out", endp->bInterval);
 #ifdef HAVE_STREAMS
             if (type == LIBUSB_TRANSFER_TYPE_BULK &&
                     libusb_get_ss_endpoint_companion_descriptor(ctx, endp,
@@ -1594,11 +1596,22 @@ static void usb_host_handle_data(USBDevice *udev, USBPacket *p)
             usb_packet_copy(p, r->buffer, p->iov.size);
         }
         ep = p->ep->nr | (r->in ? USB_DIR_IN : 0);
-        libusb_fill_interrupt_transfer(r->xfer, s->dh, ep,
-                                       r->buffer, p->iov.size,
-                                       usb_host_req_complete_data, r,
-                                       INTR_TIMEOUT);
-        break;
+        // libusb_fill_interrupt_transfer(r->xfer, s->dh, ep,
+        //                                r->buffer, p->iov.size,
+        //                                usb_host_req_complete_data, r,
+        //                                INTR_TIMEOUT);
+        // break;
+        int actual_length = p->iov.size;
+        rc = libusb_interrupt_transfer(s->dh, ep, r->buffer, p->iov.size, &actual_length, p->ep->interval);
+        if(rc == LIBUSB_TRANSFER_COMPLETED)
+        {
+            if(r->in && actual_length >= 0)
+            {
+                usb_packet_copy(p, r->buffer, actual_length);
+            }
+        }
+        p->status = status_map[rc];
+        return;
     case USB_ENDPOINT_XFER_ISOC:
         if (p->pid == USB_TOKEN_IN) {
             usb_host_iso_data_in(s, p);
