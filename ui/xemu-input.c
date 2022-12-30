@@ -113,6 +113,10 @@ void xemu_input_init(void)
     new_con->type = INPUT_DEVICE_SDL_KEYBOARD;
     new_con->name = "Keyboard";
     new_con->bound = -1;
+    new_con->PeripheralTypeA = PERIPHERAL_NONE;
+    new_con->PeripheralTypeB = PERIPHERAL_NONE;
+    new_con->PeripheralA = NULL;
+    new_con->PeripheralB = NULL;
 
     sdl_kbd_scancode_map[0] = g_config.input.keyboard_controller_scancode_map.a;
     sdl_kbd_scancode_map[1] = g_config.input.keyboard_controller_scancode_map.b;
@@ -202,6 +206,10 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         new_con->sdl_joystick_id      = SDL_JoystickInstanceID(new_con->sdl_joystick);
         new_con->sdl_joystick_guid    = SDL_JoystickGetGUID(new_con->sdl_joystick);
         new_con->bound                = -1;
+        new_con->PeripheralTypeA      = PERIPHERAL_NONE;
+        new_con->PeripheralTypeB      = PERIPHERAL_NONE;
+        new_con->PeripheralA          = NULL;
+        new_con->PeripheralB          = NULL;
 
         char guid_buf[35] = { 0 };
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
@@ -507,6 +515,98 @@ void xemu_input_bind(int index, ControllerState *state, int save)
     }
 }
 
+void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char *filename)
+{
+    ControllerState *player = bound_controllers[player_index];
+    enum peripheral_type peripheralType = (peripheral_port_index == 0 ? player->PeripheralTypeA : player->PeripheralTypeB);
+    if(peripheralType != PERIPHERAL_XMU)
+        return;
+
+    XmuState *xmu = (XmuState*)(peripheral_port_index == 0 ? player->PeripheralA : player->PeripheralB);
+
+    // Unbind existing XMU
+    if(xmu->dev != NULL) {
+        xemu_input_unbind_xmu(player_index, peripheral_port_index);
+    }
+
+    if(filename == NULL)
+        return;
+
+    xmu->filename = strdup(filename);
+
+    const int port_map[4] = {3, 4, 1, 2};
+    const int xmu_map[2] = {2, 3};
+    char *tmp;
+
+    static int id_counter = 0;
+    tmp = g_strdup_printf("xmu_%d", id_counter++);
+    
+    // Add the file as a drive (fixme: Specify the format as raw so that qemu doesn't have to guess)
+    QDict *qdict1 = qdict_new();
+    qdict_put_str(qdict1, "id", tmp);
+    qdict_put_str(qdict1, "format", "raw");
+    qdict_put_str(qdict1, "file", filename);
+
+    QemuOpts *drvopts = qemu_opts_from_qdict(qemu_find_opts("drive"), qdict1, &error_abort);
+
+    printf("Adding Drive. Options:\r\n");
+    qemu_opts_print(drvopts, "\r\n");
+
+    xmu->dinfo = drive_new(drvopts, 0, &error_abort);
+    assert(xmu->dinfo);
+
+    // Create the usb-storage device
+    QDict *qdict2 = qdict_new();
+
+    // Specify device driver
+    qdict_put_str(qdict2, "driver", "usb-storage");
+
+    // Specify device identifier
+    qdict_put_str(qdict2, "drive", tmp);
+    g_free(tmp);
+
+    // Specify index/port
+    tmp = g_strdup_printf("1.%d.%d", port_map[player_index], xmu_map[peripheral_port_index]);
+    qdict_put_str(qdict2, "port", tmp);
+    g_free(tmp);
+
+    // Create the device
+    QemuOpts *opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict2, &error_abort);
+
+    printf("Adding Device. Options:\r\n");
+    qemu_opts_print(opts, "\r\n");
+
+    DeviceState *dev = qdev_device_add(opts, &error_abort);
+    assert(dev);
+
+    xmu->dev = (void*)dev;
+
+    // Unref for eventual cleanup
+    qobject_unref(qdict1);
+    qobject_unref(qdict2);
+}
+
+void xemu_input_unbind_xmu(int player_index, int peripheral_port_index)
+{
+    ControllerState *state = bound_controllers[player_index];
+    XmuState *xmu = (XmuState*)(peripheral_port_index == 0 ? state->PeripheralA : state->PeripheralB);
+    if(xmu != NULL)
+    {
+        if(xmu->dev != NULL) {
+            qdev_unplug((DeviceState*)xmu->dev, &error_abort);
+            object_unref(OBJECT(xmu->dev));
+            xmu->dev = NULL;
+
+            // TODO: drive_del(?)
+        }
+
+        if(xmu->filename != NULL) {
+            free(xmu->filename);
+            xmu->filename = NULL;
+        }
+    }
+}
+
 void xemu_input_set_test_mode(int enabled)
 {
     test_mode = enabled;
@@ -515,4 +615,57 @@ void xemu_input_set_test_mode(int enabled)
 int xemu_input_get_test_mode(void)
 {
     return test_mode;
+}
+
+#define FATX_SIGNATURE 0x58544146
+
+// This is from libfatx
+#pragma pack(1)
+struct fatx_superblock {
+    uint32_t signature;
+    uint32_t volume_id;
+    uint32_t sectors_per_cluster;
+    uint32_t root_cluster;
+    uint16_t unknown1;
+    uint8_t  padding[4078];
+};
+#pragma pack()
+
+bool xemu_new_xmu(const char* filename, unsigned int size)
+{
+    unsigned int PartitionId = (unsigned int)rand();
+    unsigned int SectorsPerCluster = 0x04;
+    unsigned int RootDirectoryCluster = 0x01;
+    unsigned char zero = 0x00;
+    unsigned int empty_fat = 0xfffffff8;
+
+    FILE *fp = fopen(filename, "wb");
+    if(fp != NULL)
+    {
+        struct fatx_superblock superblock;
+        memset(&superblock, 0xff, sizeof(struct fatx_superblock));
+
+        superblock.signature = FATX_SIGNATURE;
+        superblock.sectors_per_cluster = 4;
+        superblock.volume_id = PartitionId;
+        superblock.root_cluster = 1;
+        superblock.unknown1 = 0;
+
+        // Write the fatx superblock.
+        fwrite(&superblock, sizeof(superblock), 1, fp);
+
+        // Write the FAT
+        fwrite(&empty_fat, sizeof(empty_fat), 1, fp);
+
+        // Fill the rest of the space with zeros
+        for(unsigned int i = ftell(fp); i < size; i++)
+            fwrite(&zero, 1, 1, fp);
+
+        fflush(fp);
+        fclose(fp);
+
+        return true;
+    }
+
+    return false;
 }
