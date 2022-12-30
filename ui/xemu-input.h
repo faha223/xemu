@@ -130,6 +130,17 @@ enum controller_input_device_type {
     INPUT_DEVICE_SDL_GAMECONTROLLER,
 };
 
+enum peripheral_type {
+    PERIPHERAL_NONE,
+    PERIPHERAL_XMU
+};
+
+typedef struct XmuState {
+    const char *filename;
+    void *dev;
+    void *dinfo;
+} XmuState;
+
 typedef struct GamepadState {
     // Input state
     uint16_t buttons;
@@ -181,6 +192,9 @@ typedef struct ControllerState {
     SDL_JoystickID      sdl_joystick_id;
     SDL_JoystickGUID    sdl_joystick_guid;
 
+    enum peripheral_type PeripheralTypes[2];
+    void               *Peripherals[2];
+
     int   bound;  // Which port this input device is bound to
     void *device; // DeviceState opaque
 } ControllerState;
@@ -203,10 +217,13 @@ void xemu_input_update_sdl_controller_state(ControllerState *state);
 void xemu_input_update_rumble(ControllerState *state);
 ControllerState *xemu_input_get_bound(int index);
 void xemu_input_bind(int index, ControllerState *state, int save);
+void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char *filename);
+void xemu_input_unbind_xmu(int player_index, int peripheral_port_index);
 int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
+bool xemu_new_xmu(const char *filename, unsigned int size);
 
 #ifdef __cplusplus
 }
