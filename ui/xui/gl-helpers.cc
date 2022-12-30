@@ -35,7 +35,6 @@ Fbo *controller_fbo,
     *logo_fbo,
     *xmu_fbo;
 GLuint g_controller_tex,
-       g_logo_tex,
        g_xmu_tex,
        g_controller_s_tex,
        g_sb_controller_tex,
