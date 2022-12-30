@@ -275,7 +275,7 @@ void MainMenuInputView::Draw()
         const char *comboLabels[2] = { "###PeripheralTypesA", "###PeripheralTypesB" };
         for (int i = 0; i < 2; i++) {
             
-            enum peripheral_type selectedType = i == 0 ? bound_state->PeripheralTypeA : bound_state->PeripheralTypeB;
+            enum peripheral_type selectedType = bound_state->PeripheralTypes[i];
             const char *peripheralTypeNames[2] = { "None", "Memory Unit" };
             const char *selectedPeripheralType = peripheralTypeNames[selectedType];
             ImGui::SetNextItemWidth(-FLT_MIN);
@@ -289,37 +289,18 @@ void MainMenuInputView::Draw()
                     char buf[128];
 
                     if (ImGui::Selectable(selectable_label, is_selected)) {
-                        if(i == 0)
+                        if(bound_state->Peripherals[i] != NULL)
                         {
-                            if(bound_state->PeripheralA != NULL)
+                            if(bound_state->PeripheralTypes[i] == PERIPHERAL_XMU)
                             {
-                                if(bound_state->PeripheralTypeA == PERIPHERAL_XMU)
-                                {
-                                    fprintf(stderr, "Another peripheral was already bound. Unplugging\r\n");
-                                    xemu_input_unbind_xmu(active, i);
-                                }
-                            }
-                            bound_state->PeripheralTypeA = (enum peripheral_type)j;
-                            if(j == PERIPHERAL_XMU) {
-                                bound_state->PeripheralA = malloc(sizeof(XmuState));
-                                memset(bound_state->PeripheralA, 0, sizeof(XmuState));
+                                fprintf(stderr, "Another peripheral was already bound. Unplugging\r\n");
+                                xemu_input_unbind_xmu(active, i);
                             }
                         }
-                        else
-                        {
-                            if(bound_state->PeripheralB != NULL)
-                            {
-                                if(bound_state->PeripheralTypeB == PERIPHERAL_XMU)
-                                {
-                                    fprintf(stderr, "Another peripheral was already bound. Unplugging\r\n");
-                                    xemu_input_unbind_xmu(active, i);
-                                }
-                            }
-                            bound_state->PeripheralTypeB = (enum peripheral_type)j;
-                            if(j == PERIPHERAL_XMU) {
-                                bound_state->PeripheralB = malloc(sizeof(XmuState));
-                                memset(bound_state->PeripheralB, 0, sizeof(XmuState));
-                            }
+                        bound_state->PeripheralTypes[i] = (enum peripheral_type)j;
+                        if(j == PERIPHERAL_XMU) {
+                            bound_state->Peripherals[i] = malloc(sizeof(XmuState));
+                            memset(bound_state->Peripherals[i], 0, sizeof(XmuState));
                         }
                     }
                     if (is_selected) {
@@ -348,7 +329,7 @@ void MainMenuInputView::Draw()
                 float y = xmu_y;
                 
                 // If mounted
-                XmuState *xmu = (XmuState*)((i == 0) ? bound_state->PeripheralA : bound_state->PeripheralB);
+                XmuState *xmu = (XmuState*)bound_state->Peripherals[i];
                 if(xmu->filename != NULL && strlen(xmu->filename) > 0) {
                     RenderXmu(x, y, 0x81dc8a00, 0x0f0f0f00);
 

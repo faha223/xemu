@@ -113,10 +113,10 @@ void xemu_input_init(void)
     new_con->type = INPUT_DEVICE_SDL_KEYBOARD;
     new_con->name = "Keyboard";
     new_con->bound = -1;
-    new_con->PeripheralTypeA = PERIPHERAL_NONE;
-    new_con->PeripheralTypeB = PERIPHERAL_NONE;
-    new_con->PeripheralA = NULL;
-    new_con->PeripheralB = NULL;
+    new_con->PeripheralTypes[0] = PERIPHERAL_NONE;
+    new_con->PeripheralTypes[1] = PERIPHERAL_NONE;
+    new_con->Peripherals[0] = NULL;
+    new_con->Peripherals[1] = NULL;
 
     sdl_kbd_scancode_map[0] = g_config.input.keyboard_controller_scancode_map.a;
     sdl_kbd_scancode_map[1] = g_config.input.keyboard_controller_scancode_map.b;
@@ -206,10 +206,10 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         new_con->sdl_joystick_id      = SDL_JoystickInstanceID(new_con->sdl_joystick);
         new_con->sdl_joystick_guid    = SDL_JoystickGetGUID(new_con->sdl_joystick);
         new_con->bound                = -1;
-        new_con->PeripheralTypeA      = PERIPHERAL_NONE;
-        new_con->PeripheralTypeB      = PERIPHERAL_NONE;
-        new_con->PeripheralA          = NULL;
-        new_con->PeripheralB          = NULL;
+        new_con->PeripheralTypes[0]   = PERIPHERAL_NONE;
+        new_con->PeripheralTypes[1]   = PERIPHERAL_NONE;
+        new_con->Peripherals[0]       = NULL;
+        new_con->Peripherals[1]       = NULL;
 
         char guid_buf[35] = { 0 };
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
@@ -517,12 +517,17 @@ void xemu_input_bind(int index, ControllerState *state, int save)
 
 void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char *filename)
 {
+    assert(player_index >= 0 && player_index < 4);
+    assert(peripheral_port_index >= 0 && peripheral_port_index < 2);
+
+    fprintf(stderr, "xemu_input_bind_xmu\r\n");
+
     ControllerState *player = bound_controllers[player_index];
-    enum peripheral_type peripheralType = (peripheral_port_index == 0 ? player->PeripheralTypeA : player->PeripheralTypeB);
+    enum peripheral_type peripheralType = player->PeripheralTypes[peripheral_port_index];
     if(peripheralType != PERIPHERAL_XMU)
         return;
 
-    XmuState *xmu = (XmuState*)(peripheral_port_index == 0 ? player->PeripheralA : player->PeripheralB);
+    XmuState *xmu = (XmuState*)player->Peripherals[peripheral_port_index];
 
     // Unbind existing XMU
     if(xmu->dev != NULL) {
@@ -531,6 +536,25 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
 
     if(filename == NULL)
         return;
+
+    // Look for any other XMUs that are using this file, and unbind them
+    for(int player_i = 0; player_i < 4; player_i++) {
+        ControllerState *state = bound_controllers[player_i];
+        if(state != NULL) {
+            for(int peripheral_i = 0; peripheral_i < 2; peripheral_i++) {
+                if(state->PeripheralTypes[peripheral_i] == PERIPHERAL_XMU) {
+                    XmuState *xmu_i = (XmuState*)state->Peripherals[peripheral_i];
+                    assert(xmu_i);
+
+                    if(xmu_i->filename != NULL && strcmp(xmu_i->filename, filename) == 0) {
+                        fprintf(stderr, "This XMU is already mounted on player %d slot %c\r\n", player_i+1, 'A' + peripheral_i);
+                        return;
+                        //xemu_input_unbind_xmu(player_i, peripheral_i);
+                    }
+                }
+            }
+        }
+    }
 
     xmu->filename = strdup(filename);
 
@@ -588,8 +612,14 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
 
 void xemu_input_unbind_xmu(int player_index, int peripheral_port_index)
 {
+    assert(player_index >= 0 && player_index < 4);
+    assert(peripheral_port_index >= 0 && peripheral_port_index < 2);
+
     ControllerState *state = bound_controllers[player_index];
-    XmuState *xmu = (XmuState*)(peripheral_port_index == 0 ? state->PeripheralA : state->PeripheralB);
+    if(state->PeripheralTypes[peripheral_port_index] != PERIPHERAL_XMU)
+        return;
+
+    XmuState *xmu = (XmuState*)state->Peripherals[peripheral_port_index];
     if(xmu != NULL)
     {
         if(xmu->dev != NULL) {
