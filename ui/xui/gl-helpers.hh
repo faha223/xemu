@@ -38,6 +38,7 @@ public:
 };
 
 extern Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
+extern Fbo *controller_fbo, *logo_fbo, *xmu_fbo;
 
 void InitCustomRendering(void);
 void RenderLogo(uint32_t time);
