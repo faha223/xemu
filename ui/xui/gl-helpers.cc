@@ -421,7 +421,8 @@ static const struct rect tex_items[] = {
     { 67, 48, 28, 28 }, // obj_port_lbl_2
     { 67, 20, 28, 28 }, // obj_port_lbl_3
     { 95, 76, 28, 28 }, // obj_port_lbl_4
-    { 0, 0, 512, 512 } // obj_xmu
+    { 0, 0, 512, 512 }, // obj_xmu
+    { 0, 0, 512, 512 }, // obj_xblc
 };
 
 enum tex_item_names {
@@ -433,7 +434,8 @@ enum tex_item_names {
     obj_port_lbl_2,
     obj_port_lbl_3,
     obj_port_lbl_4,
-    obj_xmu
+    obj_xmu,
+    obj_xblc
 };
 
 void InitCustomRendering(void)
@@ -666,6 +668,26 @@ void RenderXmu(float frame_x, float frame_y, uint32_t primary_color,
     RenderDecal(g_decal_shader, frame_x, frame_y, 256, 256,
                 tex_items[obj_xmu].x, tex_items[obj_xmu].y,
                 tex_items[obj_xmu].w, tex_items[obj_xmu].h, primary_color,
+                secondary_color, 0);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+void RenderXblc(float frame_x, float frame_y, uint32_t primary_color,
+                uint32_t secondary_color)
+{
+    glUseProgram(g_decal_shader->prog);
+    glBindVertexArray(g_decal_shader->vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_xmu_tex); // TODO: Add an XBLC Texture
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_ONE, GL_ZERO);
+
+    // Render xblc
+    RenderDecal(g_decal_shader, frame_x, frame_y, 256, 256,
+                tex_items[obj_xblc].x, tex_items[obj_xblc].y,
+                tex_items[obj_xblc].w, tex_items[obj_xblc].h, primary_color,
                 secondary_color, 0);
 
     glBindVertexArray(0);

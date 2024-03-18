@@ -93,6 +93,9 @@ void MainMenuInputView::Draw()
     // Dimensions of XMU
     float xmu_x = 0, xmu_x_stride = 256, xmu_y = 0;
     float xmu_w = 256, xmu_h = 256;
+    // Dimensions of XBLC
+    float xblc_x = 0, xblc_x_stride = 256, xblc_y = 0;
+    float xblc_w = 256, xblc_h = 256;
 
     // Setup rendering to fbo for controller and port images
     controller_fbo->Target();
@@ -295,14 +298,17 @@ void MainMenuInputView::Draw()
             // peripheral they want to use
             enum peripheral_type selected_type =
                 bound_state->peripheral_types[i];
-            const char *peripheral_type_names[2] = { "None", "Memory Unit" };
+            const char *peripheral_type_names[3] = { 
+                "None", 
+                "Memory Unit", 
+                "Xbox Live Communicator" };
             const char *selected_peripheral_type =
                 peripheral_type_names[selected_type];
             ImGui::SetNextItemWidth(-FLT_MIN);
             if (ImGui::BeginCombo(comboLabels[i], selected_peripheral_type,
                                   ImGuiComboFlags_NoArrowButton)) {
                 // Handle all available peripheral types
-                for (int j = 0; j < 2; j++) {
+                for (int j = 0; j < 3; j++) {
                     bool is_selected = selected_type == j;
                     ImGui::PushID(j);
                     const char *selectable_label = peripheral_type_names[j];
@@ -316,6 +322,12 @@ void MainMenuInputView::Draw()
                                 // Unplugging
                                 xemu_input_unbind_xmu(active, i);
                             }
+                            else if(bound_state->peripheral_types[i] ==
+                                PERIPHERAL_XBLC) {
+                                // Another peripheral was already bound
+                                // Unplugging
+                                xemu_input_unbind_xblc(active, i);
+                            }
 
                             // Free the existing state
                             g_free((void *)bound_state->peripherals[i]);
@@ -327,11 +339,21 @@ void MainMenuInputView::Draw()
                             (enum peripheral_type)j;
 
                         // Allocate state for the new peripheral
-                        if (j == PERIPHERAL_XMU) {
-                            bound_state->peripherals[i] =
-                                g_malloc(sizeof(XmuState));
-                            memset(bound_state->peripherals[i], 0,
-                                   sizeof(XmuState));
+                        switch(j)
+                        {
+                            case PERIPHERAL_XMU:
+                                bound_state->peripherals[i] =
+                                    g_malloc(sizeof(XmuState));
+                                memset(bound_state->peripherals[i], 0,
+                                    sizeof(XmuState));
+                                break;
+                            case PERIPHERAL_XBLC:
+                                bound_state->peripherals[i] =
+                                    g_malloc(sizeof(XblcState));
+                                memset(bound_state->peripherals[i], 0,
+                                    sizeof(XblcState));
+                                xemu_input_bind_xblc(active, i, "Default", "Default", false);
+                                break;
                         }
 
                         xemu_save_peripheral_settings(
@@ -428,6 +450,16 @@ void MainMenuInputView::Draw()
                 g_free((void *)xmu_port_path);
 
                 ImGui::PopID();
+            } else if(selected_type == PERIPHERAL_XBLC) {
+                float x = xblc_x + i * xblc_x_stride;
+                float y = xblc_y;
+
+                XblcState *xblc = (XblcState *)bound_state->peripherals[i];
+                if (xblc->dev != NULL) {
+                    RenderXblc(x, y, 0x81dc8a00, 0x0f0f0f00);
+                } else {
+                    RenderXblc(x, y, 0x1f1f1f00, 0x0f0f0f00);
+                }
             }
 
             ImGui::NextColumn();

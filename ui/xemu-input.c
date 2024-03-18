@@ -489,10 +489,23 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         // Unbind any XMUs
         for (int i = 0; i < 2; i++) {
             if (bound_controllers[index]->peripherals[i]) {
-                // If this was an XMU, unbind the XMU
-                if (bound_controllers[index]->peripheral_types[i] ==
-                    PERIPHERAL_XMU)
-                    xemu_input_unbind_xmu(index, i);
+
+                // Unbind the Peripheral
+                switch(bound_controllers[index]->peripheral_types[i])
+                {
+                    // If this was an XMU, unbind the XMU
+                    case PERIPHERAL_XMU:
+                        xemu_input_unbind_xmu(index, i);
+                        break;
+                    // If this was an XBLC, unbind the XBLC
+                    case PERIPHERAL_XBLC:
+                        xemu_input_unbind_xblc(index, i);
+                        break;
+                    default:
+                        // We shouldn't be here
+                        assert(false);
+                        break;
+                }
 
                 // Free up the XmuState and set the peripheral type to none
                 g_free(bound_controllers[index]->peripherals[i]);
@@ -747,6 +760,180 @@ void xemu_input_rebind_xmu(int port)
                 }
             }
         }
+    }
+}
+
+bool xemu_input_bind_xblc(int player_index, int expansion_slot_index,
+                          const char *output_device, const char *input_device, 
+                          bool is_rebind) 
+{
+    assert(player_index >= 0 && player_index < 4);
+    assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
+
+    ControllerState *player = bound_controllers[player_index];
+    enum peripheral_type peripheral_type =
+        player->peripheral_types[expansion_slot_index];
+    if (peripheral_type != PERIPHERAL_XBLC)
+        return false;
+
+    XblcState *xblc = (XblcState *)player->peripherals[expansion_slot_index];
+    
+    // Unbind existing XMU
+    if (xblc->dev != NULL) {
+        xemu_input_unbind_xblc(player_index, expansion_slot_index);
+    }
+
+    if (input_device == NULL || output_device == NULL)
+        return false;
+
+    // Look for any other XMUs that are using this file, and unbind them
+    for (int player_i = 0; player_i < 4; player_i++) {
+        ControllerState *state = bound_controllers[player_i];
+        if (state != NULL) {
+            for (int peripheral_i = 0; peripheral_i < 2; peripheral_i++) {
+                if (state->peripheral_types[peripheral_i] == PERIPHERAL_XBLC) {
+                    XblcState *xblc_i =
+                        (XblcState *)state->peripherals[peripheral_i];
+                    assert(xblc_i);
+
+                    if(xblc_i->dev != NULL) {
+                        if (xblc_i->output_device_name != NULL &&
+                            strcmp(xblc_i->output_device_name, output_device) == 0) {
+                            char *buf =
+                                g_strdup_printf("This XBLC using %s is already mounted on "
+                                                "player %d slot %c\r\n", output_device,
+                                                player_i + 1, 'A' + peripheral_i);
+                            xemu_queue_notification(buf);
+                            g_free(buf);
+                            return false;
+                        }
+                        if (xblc_i->output_device_name != NULL &&
+                            strcmp(xblc_i->input_device_name, input_device) == 0) {
+                            char *buf =
+                                g_strdup_printf("This XBLC using %s is already mounted on "
+                                                "player %d slot %c\r\n", input_device,
+                                                player_i + 1, 'A' + peripheral_i);
+                            xemu_queue_notification(buf);
+                            g_free(buf);
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    xblc->input_device_name = g_strdup(input_device);
+    xblc->output_device_name = g_strdup(output_device);
+
+    const int xblc_map[2] = { 2, 3 };
+    char *tmp;
+
+    static int id_counter = 0;
+    tmp = g_strdup_printf("xblc_%d", id_counter++);
+
+    // Create the usb-storage device
+    QDict *qdict = qdict_new();
+
+    // Specify device driver
+    qdict_put_str(qdict, "driver", "usb-xblc");
+
+    // Specify index/port
+    tmp = g_strdup_printf("1.%d.%d", port_map[player_index],
+                          xblc_map[expansion_slot_index]);
+    qdict_put_str(qdict, "port", tmp);
+    g_free(tmp);
+
+    // Create the device
+    QemuOpts *opts =
+        qemu_opts_from_qdict(qemu_find_opts("device"), qdict, &error_abort);
+
+    DeviceState *dev = qdev_device_add(opts, &error_abort);
+    assert(dev);
+
+    xblc->dev = (void *)dev;
+
+    // Unref for eventual cleanup
+    qobject_unref(qdict);
+
+    if (!is_rebind) {
+        char *buf = g_strdup_printf("%s|%s", output_device, input_device);
+        xemu_save_peripheral_settings(player_index, expansion_slot_index,
+                                      peripheral_type, buf);
+        g_free(buf);
+    }
+
+    return true;
+}
+
+void xemu_input_rebind_xblc(int port)
+{
+    for (int i = 0; i < 2; i++) {
+        enum peripheral_type peripheral_type =
+            (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
+
+        // If peripheralType is out of range, change the settings for this
+        // controller and peripheral port to default
+        if (peripheral_type < PERIPHERAL_NONE ||
+            peripheral_type >= PERIPHERAL_TYPE_COUNT) {
+            xemu_save_peripheral_settings(port, i, PERIPHERAL_NONE, NULL);
+            peripheral_type = PERIPHERAL_NONE;
+        }
+
+        const char *param = *peripheral_params_settings_map[port][i];
+
+        if (peripheral_type == PERIPHERAL_XBLC) {
+            if (param != NULL && strlen(param) > 0) {
+                // This is an XBLC and needs to be bound to this controller
+
+                // Split the parameter into the input device and output device
+                char *input_device = strchr(param, '|');
+                assert(input_device);
+                char *output_device = param;
+                input_device[0] = '\0';
+                input_device = input_device + 1;
+                DPRINTF("Rebinding XBLC: input device: %s, output device: %s\n", input_device, output_device);
+
+                bound_controllers[port]->peripheral_types[i] =
+                    peripheral_type;
+                bound_controllers[port]->peripherals[i] =
+                    g_malloc(sizeof(XblcState));
+                memset(bound_controllers[port]->peripherals[i], 0,
+                        sizeof(XblcState));
+                bool did_bind = xemu_input_bind_xblc(port, i, output_device, input_device, true);
+                if (did_bind) {
+                    char *buf =
+                        g_strdup_printf("Connected XBLC %s to port %d%c",
+                                        param, port + 1, 'A' + i);
+                    xemu_queue_notification(buf);
+                    g_free(buf);
+                }
+            }
+        }
+    }
+}
+
+void xemu_input_unbind_xblc(int player_index, int expansion_slot_index)
+{
+    assert(player_index >= 0 && player_index < 4);
+    assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
+
+    ControllerState *state = bound_controllers[player_index];
+    if (state->peripheral_types[expansion_slot_index] != PERIPHERAL_XBLC)
+        return;
+
+    XblcState *xblc = (XblcState *)state->peripherals[expansion_slot_index];
+    if (xblc != NULL) {
+        if (xblc->dev != NULL) {
+            qdev_unplug((DeviceState *)xblc->dev, &error_abort);
+            object_unref(OBJECT(xblc->dev));
+            xblc->dev = NULL;
+        }
+
+        g_free((void *)xblc->output_device_name);
+        g_free((void *)xblc->input_device_name);
+        xblc->output_device_name = NULL;
+        xblc->input_device_name = NULL;
     }
 }
 
