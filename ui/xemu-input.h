@@ -129,13 +129,12 @@ ControllerState *xemu_input_get_bound(int index);
 void xemu_input_bind(int index, ControllerState *state, int save);
 bool xemu_input_bind_xmu(int player_index, int expansion_slot_index,
                          const char *filename, bool is_rebind);
-void xemu_input_rebind_xmu(int port);
 void xemu_input_unbind_xmu(int player_index, int expansion_slot_index);
 bool xemu_input_bind_xblc(int player_index, int expansion_slot_index,
                           const char *output_device, const char *input_device, 
                           bool is_rebind);
-void xemu_input_rebind_xblc(int port);
 void xemu_input_unbind_xblc(int player_index, int expansion_slot_index);
+void xemu_input_rebind_peripherals(int port);
 int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);
 void xemu_save_peripheral_settings(int player_index, int peripheral_index,
                                    int peripheral_type,

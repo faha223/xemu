@@ -184,7 +184,7 @@ void xemu_input_init(void)
         char buf[128];
         snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
         xemu_queue_notification(buf);
-        xemu_input_rebind_xmu(port);
+        xemu_input_rebind_peripherals(port);
     }
 
     QTAILQ_INSERT_TAIL(&available_controllers, new_con, entry);
@@ -307,7 +307,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             char buf[128];
             snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
             xemu_queue_notification(buf);
-            xemu_input_rebind_xmu(port);
+            xemu_input_rebind_peripherals(port);
         }
     } else if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
         DPRINTF("Controller Removed: %d\n", event->cdevice.which);
@@ -716,48 +716,45 @@ void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
     }
 }
 
-void xemu_input_rebind_xmu(int port)
+static void xemu_input_rebind_xmu(int port, int expansion_slot_index)
 {
-    // Try to bind peripherals back to controller
-    for (int i = 0; i < 2; i++) {
-        enum peripheral_type peripheral_type =
-            (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
+    enum peripheral_type peripheral_type =
+        (enum peripheral_type)(*peripheral_types_settings_map[port][expansion_slot_index]);
 
-        // If peripheralType is out of range, change the settings for this
-        // controller and peripheral port to default
-        if (peripheral_type < PERIPHERAL_NONE ||
-            peripheral_type >= PERIPHERAL_TYPE_COUNT) {
-            xemu_save_peripheral_settings(port, i, PERIPHERAL_NONE, NULL);
-            peripheral_type = PERIPHERAL_NONE;
-        }
+    // If peripheralType is out of range, change the settings for this
+    // controller and peripheral port to default
+    if (peripheral_type < PERIPHERAL_NONE ||
+        peripheral_type >= PERIPHERAL_TYPE_COUNT) {
+        xemu_save_peripheral_settings(port, expansion_slot_index, PERIPHERAL_NONE, NULL);
+        peripheral_type = PERIPHERAL_NONE;
+    }
 
-        const char *param = *peripheral_params_settings_map[port][i];
+    const char *param = *peripheral_params_settings_map[port][expansion_slot_index];
 
-        if (peripheral_type == PERIPHERAL_XMU) {
-            if (param != NULL && strlen(param) > 0) {
-                // This is an XMU and needs to be bound to this controller
-                if (qemu_access(param, R_OK | W_OK) == 0) {
-                    bound_controllers[port]->peripheral_types[i] =
-                        peripheral_type;
-                    bound_controllers[port]->peripherals[i] =
-                        g_malloc(sizeof(XmuState));
-                    memset(bound_controllers[port]->peripherals[i], 0,
-                           sizeof(XmuState));
-                    bool did_bind = xemu_input_bind_xmu(port, i, param, true);
-                    if (did_bind) {
-                        char *buf =
-                            g_strdup_printf("Connected XMU %s to port %d%c",
-                                            param, port + 1, 'A' + i);
-                        xemu_queue_notification(buf);
-                        g_free(buf);
-                    }
-                } else {
+    if (peripheral_type == PERIPHERAL_XMU) {
+        if (param != NULL && strlen(param) > 0) {
+            // This is an XMU and needs to be bound to this controller
+            if (qemu_access(param, R_OK | W_OK) == 0) {
+                bound_controllers[port]->peripheral_types[expansion_slot_index] =
+                    peripheral_type;
+                bound_controllers[port]->peripherals[expansion_slot_index] =
+                    g_malloc(sizeof(XmuState));
+                memset(bound_controllers[port]->peripherals[expansion_slot_index], 0,
+                        sizeof(XmuState));
+                bool did_bind = xemu_input_bind_xmu(port, expansion_slot_index, param, true);
+                if (did_bind) {
                     char *buf =
-                        g_strdup_printf("Unable to bind XMU at %s to port %d%c",
-                                        param, port + 1, 'A' + i);
-                    xemu_queue_error_message(buf);
+                        g_strdup_printf("Connected Memory Unit %s to Player %d Expansion Slot %c",
+                                        param, port + 1, 'A' + expansion_slot_index);
+                    xemu_queue_notification(buf);
                     g_free(buf);
                 }
+            } else {
+                char *buf =
+                    g_strdup_printf("Unable to bind Memory Unit at %s to Player %d Expansion Slot %c",
+                                    param, port + 1, 'A' + expansion_slot_index);
+                xemu_queue_error_message(buf);
+                g_free(buf);
             }
         }
     }
@@ -866,49 +863,35 @@ bool xemu_input_bind_xblc(int player_index, int expansion_slot_index,
     return true;
 }
 
-void xemu_input_rebind_xblc(int port)
+static void xemu_input_rebind_xblc(int port, int expansion_slot_index)
 {
-    for (int i = 0; i < 2; i++) {
-        enum peripheral_type peripheral_type =
-            (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
+    enum peripheral_type peripheral_type =
+        (enum peripheral_type)(*peripheral_types_settings_map[port][expansion_slot_index]);
 
-        // If peripheralType is out of range, change the settings for this
-        // controller and peripheral port to default
-        if (peripheral_type < PERIPHERAL_NONE ||
-            peripheral_type >= PERIPHERAL_TYPE_COUNT) {
-            xemu_save_peripheral_settings(port, i, PERIPHERAL_NONE, NULL);
-            peripheral_type = PERIPHERAL_NONE;
-        }
+    // If peripheralType is out of range, change the settings for this
+    // controller and peripheral port to default
+    if (peripheral_type < PERIPHERAL_NONE ||
+        peripheral_type >= PERIPHERAL_TYPE_COUNT) {
+        xemu_save_peripheral_settings(port, expansion_slot_index, PERIPHERAL_NONE, NULL);
+        peripheral_type = PERIPHERAL_NONE;
+    }
 
-        const char *param = *peripheral_params_settings_map[port][i];
+    const char *param = *peripheral_params_settings_map[port][expansion_slot_index];
 
-        if (peripheral_type == PERIPHERAL_XBLC) {
-            if (param != NULL && strlen(param) > 0) {
-                // This is an XBLC and needs to be bound to this controller
-
-                // Split the parameter into the input device and output device
-                char *input_device = strchr(param, '|');
-                assert(input_device);
-                char *output_device = param;
-                input_device[0] = '\0';
-                input_device = input_device + 1;
-                DPRINTF("Rebinding XBLC: input device: %s, output device: %s\n", input_device, output_device);
-
-                bound_controllers[port]->peripheral_types[i] =
-                    peripheral_type;
-                bound_controllers[port]->peripherals[i] =
-                    g_malloc(sizeof(XblcState));
-                memset(bound_controllers[port]->peripherals[i], 0,
-                        sizeof(XblcState));
-                bool did_bind = xemu_input_bind_xblc(port, i, output_device, input_device, true);
-                if (did_bind) {
-                    char *buf =
-                        g_strdup_printf("Connected XBLC %s to port %d%c",
-                                        param, port + 1, 'A' + i);
-                    xemu_queue_notification(buf);
-                    g_free(buf);
-                }
-            }
+    if (peripheral_type == PERIPHERAL_XBLC) {
+        bound_controllers[port]->peripheral_types[expansion_slot_index] =
+            peripheral_type;
+        bound_controllers[port]->peripherals[expansion_slot_index] =
+            g_malloc(sizeof(XblcState));
+        memset(bound_controllers[port]->peripherals[expansion_slot_index], 0,
+                sizeof(XblcState));
+        bool did_bind = xemu_input_bind_xblc(port, expansion_slot_index, "Default", "Default", true);
+        if (did_bind) {
+            char *buf =
+                g_strdup_printf("Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c",
+                                port + 1, 'A' + expansion_slot_index);
+            xemu_queue_notification(buf);
+            g_free(buf);
         }
     }
 }
@@ -934,6 +917,24 @@ void xemu_input_unbind_xblc(int player_index, int expansion_slot_index)
         g_free((void *)xblc->input_device_name);
         xblc->output_device_name = NULL;
         xblc->input_device_name = NULL;
+    }
+}
+
+void xemu_input_rebind_peripherals(int port)
+{
+    for (int i = 0; i < 2; i++) {
+        enum peripheral_type peripheral_type =
+            (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
+
+        switch(peripheral_type)
+        {
+            case PERIPHERAL_XMU:
+                xemu_input_rebind_xmu(port, i);
+                break;
+            case PERIPHERAL_XBLC:
+                xemu_input_rebind_xblc(port, i);
+                break;
+        }
     }
 }
 

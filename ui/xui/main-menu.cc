@@ -204,14 +204,14 @@ void MainMenuInputView::Draw()
             if (ImGui::Selectable(selectable_label, is_selected)) {
                 xemu_input_bind(active, iter, 1);
 
-                // FIXME: We want to bind the XMU here, but we can't because we
-                // just unbound it and we need to wait for Qemu to release the
-                // file
+                // FIXME: We want to bind the peripherals here, but we can't 
+                // because we just unbound it and we need to wait for Qemu to
+                // release the file
 
                 // If we previously had no controller connected, we can rebind
-                // the XMU
+                // the peripherals
                 if (bound_state == NULL)
-                    xemu_input_rebind_xmu(active);
+                    xemu_input_rebind_peripherals(active);
 
                 bound_state = iter;
             }
@@ -346,18 +346,31 @@ void MainMenuInputView::Draw()
                                     g_malloc(sizeof(XmuState));
                                 memset(bound_state->peripherals[i], 0,
                                     sizeof(XmuState));
+                                xemu_save_peripheral_settings(
+                                    active, i, bound_state->peripheral_types[i], 
+                                    NULL);
                                 break;
                             case PERIPHERAL_XBLC:
                                 bound_state->peripherals[i] =
                                     g_malloc(sizeof(XblcState));
                                 memset(bound_state->peripherals[i], 0,
                                     sizeof(XblcState));
-                                xemu_input_bind_xblc(active, i, "Default", "Default", false);
+                                xemu_save_peripheral_settings(
+                                    active, i, bound_state->peripheral_types[i], 
+                                    "Default");
+                                if(xemu_input_bind_xblc(active, i, "Default", "Default", 
+                                                        false))
+                                {
+                                    char *buf = g_strdup_printf(
+                                        "Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c.", 
+                                        active + 1, 'A' + i);
+                                    xemu_queue_notification(buf);
+                                    g_free(buf);
+                                }
                                 break;
                         }
 
-                        xemu_save_peripheral_settings(
-                            active, i, bound_state->peripheral_types[i], NULL);
+                        
                     }
 
                     if (is_selected) {
@@ -460,6 +473,24 @@ void MainMenuInputView::Draw()
                 } else {
                     RenderXblc(x, y, 0x1f1f1f00, 0x0f0f0f00);
                 }
+
+                ImVec2 xblc_display_size;
+                if (ImGui::GetContentRegionMax().x <
+                    xblc_h * g_viewport_mgr.m_scale) {
+                    xblc_display_size.x = ImGui::GetContentRegionMax().x / 2;
+                    xblc_display_size.y = xblc_display_size.x * xblc_h / xblc_w;
+                } else {
+                    xblc_display_size = ImVec2(xblc_w * g_viewport_mgr.m_scale,
+                                               xblc_h * g_viewport_mgr.m_scale);
+                }
+
+                ImGui::SetCursorPosX(
+                    ImGui::GetCursorPosX() +
+                    (int)((ImGui::GetColumnWidth() - xblc_display_size.x) /
+                          2.0));
+
+                ImGui::Image(id, xblc_display_size, ImVec2(0.5f * i, 1),
+                             ImVec2(0.5f * (i + 1), 0));
             }
 
             ImGui::NextColumn();
