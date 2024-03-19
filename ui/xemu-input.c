@@ -34,7 +34,7 @@
 
 #include "sysemu/blockdev.h"
 
-// #define DEBUG_INPUT
+#define DEBUG_INPUT
 
 #ifdef DEBUG_INPUT
 #define DPRINTF(fmt, ...) \
@@ -764,6 +764,10 @@ bool xemu_input_bind_xblc(int player_index, int expansion_slot_index,
                           const char *output_device, const char *input_device, 
                           bool is_rebind) 
 {
+    DPRINTF("Connecting Xbox Live Communicator Headset\n");
+    DPRINTF("XBLC Output Device: %s\n", output_device);
+    DPRINTF("XBLC Input Device: %s\n", input_device);
+
     assert(player_index >= 0 && player_index < 4);
     assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
 
@@ -879,19 +883,45 @@ static void xemu_input_rebind_xblc(int port, int expansion_slot_index)
     const char *param = *peripheral_params_settings_map[port][expansion_slot_index];
 
     if (peripheral_type == PERIPHERAL_XBLC) {
+        const char *default_device_name = "Default";
         bound_controllers[port]->peripheral_types[expansion_slot_index] =
             peripheral_type;
         bound_controllers[port]->peripherals[expansion_slot_index] =
             g_malloc(sizeof(XblcState));
         memset(bound_controllers[port]->peripherals[expansion_slot_index], 0,
                 sizeof(XblcState));
-        bool did_bind = xemu_input_bind_xblc(port, expansion_slot_index, "Default", "Default", true);
+        const char *output_device = default_device_name;
+        const char *input_device = default_device_name;
+        DPRINTF("XLBC Parameter: %s\n", param);
+        if(param != NULL) {
+            char *delimiterPtr = strchr(param, '|');
+            if(delimiterPtr != NULL) {
+                output_device = g_strndup(param, delimiterPtr - param);
+                input_device = g_strdup(delimiterPtr+1);
+
+                DPRINTF("Parsed %s into %s and %s", param, output_device, input_device);
+            } else {
+                DPRINTF("Delimiter not found in %s", param);
+            }
+        } else {
+            DPRINTF("Param is NULL");
+        }
+        bool did_bind = xemu_input_bind_xblc(port, expansion_slot_index, output_device, input_device, true);
         if (did_bind) {
             char *buf =
                 g_strdup_printf("Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c",
                                 port + 1, 'A' + expansion_slot_index);
             xemu_queue_notification(buf);
             g_free(buf);
+        }
+
+        if(input_device != default_device_name) {
+            DPRINTF("Freeing output_device");
+            g_free(input_device);
+        }
+        if(output_device != default_device_name) {
+            DPRINTF("Freeing input_device");
+            g_free(output_device);
         }
     }
 }
@@ -934,6 +964,8 @@ void xemu_input_rebind_peripherals(int port)
             case PERIPHERAL_XBLC:
                 xemu_input_rebind_xblc(port, i);
                 break;
+            default:
+                continue;
         }
     }
 }

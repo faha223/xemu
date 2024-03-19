@@ -38,7 +38,7 @@ public:
     void Restore();
 };
 
-extern Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
+extern Fbo *controller_fbo, *xmu_fbo, *xblc_fbo, *logo_fbo;
 extern GLuint g_icon_tex;
 
 void InitCustomRendering(void);

@@ -29,7 +29,7 @@
 #include "audio/audio.h"
 #include "qemu/fifo8.h"
 
-//#define DEBUG_XBLC
+#define DEBUG_XBLC
 #ifdef DEBUG_XBLC
 #define DPRINTF printf
 #else
@@ -67,13 +67,15 @@ typedef struct USBXBLCState {
     struct audsettings as;
 
     struct {
-        SWVoiceOut* voice;
+        SDL_AudioDeviceID voice;
+        SDL_AudioSpec spec;
         uint8_t packet[XBLC_MAX_PACKET];
         Fifo8 fifo;
     } out;
 
     struct {
-        SWVoiceIn *voice;
+        SDL_AudioDeviceID voice;
+        SDL_AudioSpec spec;
         uint8_t packet[XBLC_MAX_PACKET];
         Fifo8 fifo;
     } in;
@@ -168,78 +170,131 @@ static void usb_xblc_handle_reset(USBDevice *dev)
     fifo8_reset(&s->out.fifo);
 }
 
-static void output_callback(void *opaque, int avail)
+static void output_callback(void *userdata, uint8_t *stream, int len)
 {
-    USBXBLCState *s = (USBXBLCState *)opaque;
+    USBXBLCState *s = (USBXBLCState *)userdata;
     const uint8_t *data;
     uint32_t processed, max_len;
-
-    // Not enough data to send, wait a bit longer, fill with silence for now
-    if (fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
-        do {
-            processed = AUD_write(s->out.voice, (void *)silence, ARRAY_SIZE(silence));
-            avail -= processed;
-        } while (avail > 0 && processed >= XBLC_MAX_PACKET);
+    if(fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
+        memcpy(stream, (void*)silence, MIN(len, ARRAY_SIZE(silence)));
         return;
     }
-
-    // Write speaker data into audio backend
-    while (avail > 0 && !fifo8_is_empty(&s->out.fifo)) {
-        max_len   = MIN(fifo8_num_used(&s->out.fifo), avail);
-        data      = fifo8_pop_buf(&s->out.fifo, max_len, &max_len);
-        processed = AUD_write(s->out.voice, (void *)data, max_len);
-        avail    -= processed;
-        if (processed < max_len) return;
+    
+    while(len > 0 && !fifo8_is_empty(&s->out.fifo)) {
+        max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)len);
+        data = fifo8_pop_buf(&s->out.fifo, max_len, &max_len);
+        memcpy(stream, data, max_len);
+        len -= max_len;
     }
 }
 
-static void input_callback(void *opaque, int avail)
+// static void output_callback(void *opaque, int avail)
+// {
+//     USBXBLCState *s = (USBXBLCState *)opaque;
+//     const uint8_t *data;
+//     uint32_t processed, max_len;
+
+//     // Not enough data to send, wait a bit longer, fill with silence for now
+//     if (fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
+//         do {
+//             processed = AUD_write(s->out.voice, (void *)silence, ARRAY_SIZE(silence));
+//             avail -= processed;
+//         } while (avail > 0 && processed >= XBLC_MAX_PACKET);
+//         return;
+//     }
+
+//     // Write speaker data into audio backend
+//     while (avail > 0 && !fifo8_is_empty(&s->out.fifo)) {
+//         max_len   = MIN(fifo8_num_used(&s->out.fifo), avail);
+//         data      = fifo8_pop_buf(&s->out.fifo, max_len, &max_len);
+//         processed = AUD_write(s->out.voice, (void *)data, max_len);
+//         avail    -= processed;
+//         if (processed < max_len) return;
+//     }
+// }
+
+static void input_callback(void *userdata, uint8_t *stream, int len)
 {
-    USBXBLCState *s = (USBXBLCState *)opaque;
-    uint32_t processed, max_len;
-
-    // Get microphone data from audio backend
-    while (avail > 0 && !fifo8_is_full(&s->in.fifo)) {
-        max_len   = MIN(sizeof(s->in.packet), fifo8_num_free(&s->in.fifo));
-        processed = AUD_read(s->in.voice, s->in.packet, max_len);
-        avail    -= processed;
-        fifo8_push_all(&s->in.fifo, s->in.packet, processed);
-        if (processed < max_len) return;
-    }
-
-    // Flush excess/old data - this can happen if the user program stops the iso transfers after it
-    // has setup the xblc.
-    while (avail > 0)
-    {
-        processed = AUD_read(s->in.voice, s->in.packet, XBLC_MAX_PACKET);
-        avail -= processed;
-        if (processed == 0) break;
-    }
+    USBXBLCState *s = (USBXBLCState *)userdata;
+    
+    // Don't try to put more into the queue than will fit
+    uint32_t max_len = MIN(len, fifo8_num_free(&s->in.fifo));
+    fifo8_push_all(&s->in.fifo, stream, max_len);
 }
+
+// static void input_callback(void *opaque, int avail)
+// {
+//     USBXBLCState *s = (USBXBLCState *)opaque;
+//     uint32_t processed, max_len;
+
+//     // Get microphone data from audio backend
+//     while (avail > 0 && !fifo8_is_full(&s->in.fifo)) {
+//         max_len   = MIN(sizeof(s->in.packet), fifo8_num_free(&s->in.fifo));
+//         processed = AUD_read(s->in.voice, s->in.packet, max_len);
+//         avail    -= processed;
+//         fifo8_push_all(&s->in.fifo, s->in.packet, processed);
+//         if (processed < max_len) return;
+//     }
+
+//     // Flush excess/old data - this can happen if the user program stops the iso transfers after it
+//     // has setup the xblc.
+//     while (avail > 0)
+//     {
+//         processed = AUD_read(s->in.voice, s->in.packet, XBLC_MAX_PACKET);
+//         avail -= processed;
+//         if (processed == 0) break;
+//     }
+// }
 
 static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
 {
     USBXBLCState *s = (USBXBLCState *)dev;
 
-    AUD_set_active_out(s->out.voice, FALSE);
-    AUD_set_active_in(s->in.voice, FALSE);
+    SDL_LockAudioDevice(s->in.voice);
+    SDL_LockAudioDevice(s->out.voice);
 
     fifo8_reset(&s->in.fifo);
     fifo8_reset(&s->out.fifo);
 
-    s->as.freq = sample_rate;
-    s->as.nchannels = 1;
-    s->as.fmt = AUDIO_FORMAT_S16;
-    s->as.endianness = 0;
+    if(s->in.voice != 0) {
+        SDL_CloseAudioDevice(s->in.voice);
+        s->in.voice = 0;
+    }
 
-    s->out.voice = AUD_open_out(&s->card, s->out.voice, TYPE_USB_XBLC "-speaker",
-                                s, output_callback, &s->as);
+    if(s->out.voice != 0) {
+        SDL_CloseAudioDevice(s->out.voice);
+        s->out.voice = 0;
+    }
 
-    s->in.voice = AUD_open_in(&s->card, s->in.voice, TYPE_USB_XBLC "-microphone",
-                                s, input_callback, &s->as);
+    SDL_AudioSpec inputDesiredSpec;
+    SDL_AudioSpec obtainedSpec;
+    inputDesiredSpec.channels = 1;
+    inputDesiredSpec.silence = 0x00;
+    inputDesiredSpec.freq = sample_rate;
+    inputDesiredSpec.format = AUDIO_S16LSB;
+    inputDesiredSpec.samples = 100;
+    inputDesiredSpec.size = XBLC_FIFO_SIZE;
+    inputDesiredSpec.userdata = (void*)s;
+    inputDesiredSpec.callback = input_callback;
+    s->in.voice = SDL_OpenAudioDevice("Xbox Communicator Mono", 1, &inputDesiredSpec, &s->in.spec, 0);
 
-    AUD_set_active_out(s->out.voice, TRUE);
-    AUD_set_active_in(s->in.voice, TRUE);
+    SDL_AudioSpec outputDesiredSpec;
+    outputDesiredSpec.channels = 1;
+    outputDesiredSpec.silence = 0x00;
+    outputDesiredSpec.freq = sample_rate;
+    outputDesiredSpec.format = AUDIO_S16LSB;
+    outputDesiredSpec.samples = 100;
+    outputDesiredSpec.size = XBLC_FIFO_SIZE;
+    outputDesiredSpec.userdata = (void*)s;
+    outputDesiredSpec.callback = output_callback;
+    s->out.voice = SDL_OpenAudioDevice("Xbox Communicator Mono", 0, &outputDesiredSpec, &s->out.spec, 0);
+
+    SDL_PauseAudioDevice(s->in.voice, 0);
+    SDL_PauseAudioDevice(s->out.voice, 0);
+
+    SDL_UnlockAudioDevice(s->in.voice);
+    SDL_UnlockAudioDevice(s->out.voice);
+
     DPRINTF("[XBLC] Init audio streams at %d Hz\n", sample_rate);
 }
 
@@ -324,15 +379,19 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
 
-    AUD_set_active_out(s->out.voice, false);
-    AUD_set_active_in(s->in.voice, false);
+    // AUD_set_active_out(s->out.voice, false);
+    // AUD_set_active_in(s->in.voice, false);
+    SDL_LockAudioDevice(s->in.voice);
+    SDL_LockAudioDevice(s->out.voice);
 
     fifo8_destroy(&s->out.fifo);
     fifo8_destroy(&s->in.fifo);
 
-    AUD_close_out(&s->card, s->out.voice);
-    AUD_close_in(&s->card, s->in.voice);
-    AUD_remove_card(&s->card);
+    // AUD_close_out(&s->card, s->out.voice);
+    // AUD_close_in(&s->card, s->in.voice);
+    // AUD_remove_card(&s->card);
+    SDL_CloseAudioDevice(s->in.voice);
+    SDL_CloseAudioDevice(s->out.voice);
 }
 
 static void usb_xblc_class_initfn(ObjectClass *klass, void *data)
@@ -349,7 +408,7 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
     USBXBLCState *s = USB_XBLC(dev);
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
-    AUD_register_card(TYPE_USB_XBLC, &s->card);
+    //AUD_register_card(TYPE_USB_XBLC, &s->card);
 
     fifo8_create(&s->in.fifo, XBLC_FIFO_SIZE);
     fifo8_create(&s->out.fifo, XBLC_FIFO_SIZE);

@@ -23,6 +23,7 @@
 #include "data/logo_sdf.png.h"
 #include "data/xemu_64x64.png.h"
 #include "data/xmu_mask.png.h"
+#include "data/xblc_mask.png.h"
 #include "notifications.hh"
 #include "stb_image.h"
 #include <fpng.h>
@@ -32,8 +33,8 @@
 
 #include "ui/shader/xemu-logo-frag.h"
 
-Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
-GLuint g_controller_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
+Fbo *controller_fbo, *xmu_fbo, *xblc_fbo, *logo_fbo;
+GLuint g_controller_tex, g_logo_tex, g_icon_tex, g_xmu_tex, g_xblc_tex;
 
 enum class ShaderType {
     Blit,
@@ -449,6 +450,9 @@ void InitCustomRendering(void)
     g_xmu_tex = LoadTextureFromMemory(xmu_mask_data, xmu_mask_size);
     xmu_fbo = new Fbo(512, 256);
 
+    g_xblc_tex = LoadTextureFromMemory(xblc_mask_data, xblc_mask_size);
+    xblc_fbo = new Fbo(512, 256);
+
     g_logo_tex = LoadTextureFromMemory(logo_sdf_data, logo_sdf_size);
     g_logo_shader = NewDecalShader(ShaderType::Logo);
     logo_fbo = new Fbo(512, 512);
@@ -680,7 +684,7 @@ void RenderXblc(float frame_x, float frame_y, uint32_t primary_color,
     glUseProgram(g_decal_shader->prog);
     glBindVertexArray(g_decal_shader->vao);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, g_xmu_tex); // TODO: Add an XBLC Texture
+    glBindTexture(GL_TEXTURE_2D, g_xblc_tex);
     glBlendEquation(GL_FUNC_ADD);
     glBlendFunc(GL_ONE, GL_ZERO);
 
