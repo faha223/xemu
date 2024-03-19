@@ -34,7 +34,7 @@
 
 #include "sysemu/blockdev.h"
 
-#define DEBUG_INPUT
+//#define DEBUG_INPUT
 
 #ifdef DEBUG_INPUT
 #define DPRINTF(fmt, ...) \
@@ -120,6 +120,12 @@ static const char **peripheral_params_settings_map[4][2] = {
 static int sdl_kbd_scancode_map[25];
 
 static const int port_map[4] = { 3, 4, 1, 2 };
+
+const char *peripheral_type_names[3]  =  {
+    "None",
+    "Memory Unit",
+    "Xbox Live Communicator"
+};
 
 void xemu_input_init(void)
 {
@@ -495,11 +501,8 @@ void xemu_input_bind(int index, ControllerState *state, int save)
                 {
                     // If this was an XMU, unbind the XMU
                     case PERIPHERAL_XMU:
-                        xemu_input_unbind_xmu(index, i);
-                        break;
-                    // If this was an XBLC, unbind the XBLC
                     case PERIPHERAL_XBLC:
-                        xemu_input_unbind_xblc(index, i);
+                        xemu_input_unbind_peripheral(index, i);
                         break;
                     default:
                         // We shouldn't be here
@@ -587,6 +590,30 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         object_unref(OBJECT(dev));
 
         state->device = usbhub_dev;
+    }
+}
+
+static void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
+{
+    assert(player_index >= 0 && player_index < 4);
+    assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
+
+    ControllerState *state = bound_controllers[player_index];
+    if(state == NULL)
+        return;
+    if (state->peripheral_types[expansion_slot_index] != PERIPHERAL_XMU)
+        return;
+
+    XmuState *xmu = (XmuState *)state->peripherals[expansion_slot_index];
+    if (xmu != NULL) {
+        if (xmu->dev != NULL) {
+            qdev_unplug((DeviceState *)xmu->dev, &error_abort);
+            object_unref(OBJECT(xmu->dev));
+            xmu->dev = NULL;
+        }
+
+        g_free((void *)xmu->filename);
+        xmu->filename = NULL;
     }
 }
 
@@ -694,28 +721,6 @@ bool xemu_input_bind_xmu(int player_index, int expansion_slot_index,
     return true;
 }
 
-void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
-{
-    assert(player_index >= 0 && player_index < 4);
-    assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
-
-    ControllerState *state = bound_controllers[player_index];
-    if (state->peripheral_types[expansion_slot_index] != PERIPHERAL_XMU)
-        return;
-
-    XmuState *xmu = (XmuState *)state->peripherals[expansion_slot_index];
-    if (xmu != NULL) {
-        if (xmu->dev != NULL) {
-            qdev_unplug((DeviceState *)xmu->dev, &error_abort);
-            object_unref(OBJECT(xmu->dev));
-            xmu->dev = NULL;
-        }
-
-        g_free((void *)xmu->filename);
-        xmu->filename = NULL;
-    }
-}
-
 static void xemu_input_rebind_xmu(int port, int expansion_slot_index)
 {
     enum peripheral_type peripheral_type =
@@ -760,10 +765,37 @@ static void xemu_input_rebind_xmu(int port, int expansion_slot_index)
     }
 }
 
-bool xemu_input_bind_xblc(int player_index, int expansion_slot_index,
-                          const char *output_device, const char *input_device, 
-                          bool is_rebind) 
+static void xemu_input_unbind_xblc(int player_index)
 {
+    const int expansion_slot_index = 0;
+    assert(player_index >= 0 && player_index < 4);
+    
+    ControllerState *state = bound_controllers[player_index];
+    if(state == NULL)
+        return;
+    if (state->peripheral_types[expansion_slot_index] != PERIPHERAL_XBLC)
+        return;
+
+    XblcState *xblc = (XblcState *)state->peripherals[expansion_slot_index];
+    if (xblc != NULL) {
+        if (xblc->dev != NULL) {
+            qdev_unplug((DeviceState *)xblc->dev, &error_abort);
+            object_unref(OBJECT(xblc->dev));
+            xblc->dev = NULL;
+        }
+
+        g_free((void *)xblc->output_device_name);
+        g_free((void *)xblc->input_device_name);
+        xblc->output_device_name = NULL;
+        xblc->input_device_name = NULL;
+    }
+}
+
+bool xemu_input_bind_xblc(int player_index, const char *output_device, 
+                          const char *input_device, bool is_rebind)
+{
+    // Xbox Live Communicator is keyed such that it can only go into expansion slot 0
+    const int expansion_slot_index = 0;
     DPRINTF("Connecting Xbox Live Communicator Headset\n");
     DPRINTF("XBLC Output Device: %s\n", output_device);
     DPRINTF("XBLC Input Device: %s\n", input_device);
@@ -772,6 +804,8 @@ bool xemu_input_bind_xblc(int player_index, int expansion_slot_index,
     assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
 
     ControllerState *player = bound_controllers[player_index];
+    if(player == NULL)
+        return false;
     enum peripheral_type peripheral_type =
         player->peripheral_types[expansion_slot_index];
     if (peripheral_type != PERIPHERAL_XBLC)
@@ -779,45 +813,43 @@ bool xemu_input_bind_xblc(int player_index, int expansion_slot_index,
 
     XblcState *xblc = (XblcState *)player->peripherals[expansion_slot_index];
     
-    // Unbind existing XMU
+    // Unbind existing XBLC
     if (xblc->dev != NULL) {
-        xemu_input_unbind_xblc(player_index, expansion_slot_index);
+        xemu_input_unbind_xblc(player_index);
     }
 
     if (input_device == NULL || output_device == NULL)
         return false;
 
-    // Look for any other XMUs that are using this file, and unbind them
+    // Look for any other XBLCs that are using these devices
     for (int player_i = 0; player_i < 4; player_i++) {
         ControllerState *state = bound_controllers[player_i];
         if (state != NULL) {
-            for (int peripheral_i = 0; peripheral_i < 2; peripheral_i++) {
-                if (state->peripheral_types[peripheral_i] == PERIPHERAL_XBLC) {
-                    XblcState *xblc_i =
-                        (XblcState *)state->peripherals[peripheral_i];
-                    assert(xblc_i);
+            if (state->peripheral_types[0] == PERIPHERAL_XBLC) {
+                XblcState *xblc_i =
+                    (XblcState *)state->peripherals[0];
+                assert(xblc_i);
 
-                    if(xblc_i->dev != NULL) {
-                        if (xblc_i->output_device_name != NULL &&
-                            strcmp(xblc_i->output_device_name, output_device) == 0) {
-                            char *buf =
-                                g_strdup_printf("This XBLC using %s is already mounted on "
-                                                "player %d slot %c\r\n", output_device,
-                                                player_i + 1, 'A' + peripheral_i);
-                            xemu_queue_notification(buf);
-                            g_free(buf);
-                            return false;
-                        }
-                        if (xblc_i->output_device_name != NULL &&
-                            strcmp(xblc_i->input_device_name, input_device) == 0) {
-                            char *buf =
-                                g_strdup_printf("This XBLC using %s is already mounted on "
-                                                "player %d slot %c\r\n", input_device,
-                                                player_i + 1, 'A' + peripheral_i);
-                            xemu_queue_notification(buf);
-                            g_free(buf);
-                            return false;
-                        }
+                if(xblc_i->dev != NULL) {
+                    if (xblc_i->output_device_name != NULL &&
+                        strcmp(xblc_i->output_device_name, output_device) == 0) {
+                        char *buf =
+                            g_strdup_printf("This XBLC using %s is already mounted on "
+                                            "player %d slot %c\r\n", output_device,
+                                            player_i + 1, 'A');
+                        xemu_queue_notification(buf);
+                        g_free(buf);
+                        return false;
+                    }
+                    if (xblc_i->output_device_name != NULL &&
+                        strcmp(xblc_i->input_device_name, input_device) == 0) {
+                        char *buf =
+                            g_strdup_printf("This XBLC using %s is already mounted on "
+                                            "player %d slot %c\r\n", input_device,
+                                            player_i + 1, 'A');
+                        xemu_queue_notification(buf);
+                        g_free(buf);
+                        return false;
                     }
                 }
             }
@@ -867,8 +899,9 @@ bool xemu_input_bind_xblc(int player_index, int expansion_slot_index,
     return true;
 }
 
-static void xemu_input_rebind_xblc(int port, int expansion_slot_index)
+static void xemu_input_rebind_xblc(int port)
 {
+    const int expansion_slot_index = 0;
     enum peripheral_type peripheral_type =
         (enum peripheral_type)(*peripheral_types_settings_map[port][expansion_slot_index]);
 
@@ -906,7 +939,7 @@ static void xemu_input_rebind_xblc(int port, int expansion_slot_index)
         } else {
             DPRINTF("Param is NULL");
         }
-        bool did_bind = xemu_input_bind_xblc(port, expansion_slot_index, output_device, input_device, true);
+        bool did_bind = xemu_input_bind_xblc(port, output_device, input_device, true);
         if (did_bind) {
             char *buf =
                 g_strdup_printf("Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c",
@@ -917,36 +950,34 @@ static void xemu_input_rebind_xblc(int port, int expansion_slot_index)
 
         if(input_device != default_device_name) {
             DPRINTF("Freeing output_device");
-            g_free(input_device);
+            g_free((void*)input_device);
         }
         if(output_device != default_device_name) {
             DPRINTF("Freeing input_device");
-            g_free(output_device);
+            g_free((void*)output_device);
         }
     }
 }
 
-void xemu_input_unbind_xblc(int player_index, int expansion_slot_index)
+void xemu_input_unbind_peripheral(int player_index, int expansion_slot_index)
 {
-    assert(player_index >= 0 && player_index < 4);
-    assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
-
     ControllerState *state = bound_controllers[player_index];
-    if (state->peripheral_types[expansion_slot_index] != PERIPHERAL_XBLC)
-        return;
-
-    XblcState *xblc = (XblcState *)state->peripherals[expansion_slot_index];
-    if (xblc != NULL) {
-        if (xblc->dev != NULL) {
-            qdev_unplug((DeviceState *)xblc->dev, &error_abort);
-            object_unref(OBJECT(xblc->dev));
-            xblc->dev = NULL;
+    if(state != NULL)
+    {
+        switch(state->peripheral_types[expansion_slot_index])
+        {
+            case PERIPHERAL_XMU:
+                xemu_input_unbind_xmu(player_index, expansion_slot_index);
+                break;
+            case PERIPHERAL_XBLC:
+                assert(player_index == 0);
+                xemu_input_unbind_xblc(player_index);
+                break;
+            case PERIPHERAL_NONE:
+                break;
+            default:
+                assert(false);
         }
-
-        g_free((void *)xblc->output_device_name);
-        g_free((void *)xblc->input_device_name);
-        xblc->output_device_name = NULL;
-        xblc->input_device_name = NULL;
     }
 }
 
@@ -962,7 +993,12 @@ void xemu_input_rebind_peripherals(int port)
                 xemu_input_rebind_xmu(port, i);
                 break;
             case PERIPHERAL_XBLC:
-                xemu_input_rebind_xblc(port, i);
+                if(i != 0) {
+                    // An Xbox Live Communicator Headset cannot be plugged into Expansion Slot B
+                    xemu_save_peripheral_settings(port, i, PERIPHERAL_NONE, NULL);
+                    continue;
+                }
+                xemu_input_rebind_xblc(port);
                 break;
             default:
                 continue;

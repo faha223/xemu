@@ -41,6 +41,7 @@
 #include "../xemu-xbe.h"
 
 #include "../thirdparty/fatx/fatx.h"
+#include "../../hw/xbox/xblc.h"
 
 #define DEFAULT_XMU_SIZE 8388608
 
@@ -290,84 +291,81 @@ void MainMenuInputView::Draw()
         const char *img_file_filters = ".img Files\0*.img\0All Files\0*.*\0";
         const char *comboLabels[2] = { "###ExpansionSlotA",
                                        "###ExpansionSlotB" };
-        for (int i = 0; i < 2; i++) {
+        for (int expansion_slot_index = 0; expansion_slot_index < 2; expansion_slot_index++) {
             // Display a combo box to allow the user to choose the type of
             // peripheral they want to use
             enum peripheral_type selected_type =
-                bound_state->peripheral_types[i];
-            const char *peripheral_type_names[3] = { 
-                "None", 
-                "Memory Unit", 
-                "Xbox Live Communicator" };
+                bound_state->peripheral_types[expansion_slot_index];
+            enum peripheral_type peripheral_types[2][3] = { 
+                { PERIPHERAL_NONE, PERIPHERAL_XMU, PERIPHERAL_XBLC }, // Slot A
+                { PERIPHERAL_NONE, PERIPHERAL_XMU }                   // Slot B
+            };
             const char *selected_peripheral_type =
                 peripheral_type_names[selected_type];
             ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::BeginCombo(comboLabels[i], selected_peripheral_type,
+            if (ImGui::BeginCombo(comboLabels[expansion_slot_index], selected_peripheral_type,
                                   ImGuiComboFlags_NoArrowButton)) {
                 // Handle all available peripheral types
-                for (int j = 0; j < 3; j++) {
+                for (int j = 0; j < 3 - expansion_slot_index; j++) {
                     bool is_selected = selected_type == j;
                     ImGui::PushID(j);
-                    const char *selectable_label = peripheral_type_names[j];
+                    const char *selectable_label = peripheral_type_names[peripheral_types[expansion_slot_index][j]];
 
                     if (ImGui::Selectable(selectable_label, is_selected)) {
                         // Free any existing peripheral
-                        if (bound_state->peripherals[i] != NULL) {
-                            if (bound_state->peripheral_types[i] ==
-                                PERIPHERAL_XMU) {
-                                // Another peripheral was already bound.
-                                // Unplugging
-                                xemu_input_unbind_xmu(active, i);
-                            }
-                            else if(bound_state->peripheral_types[i] ==
-                                PERIPHERAL_XBLC) {
-                                // Another peripheral was already bound
-                                // Unplugging
-                                xemu_input_unbind_xblc(active, i);
-                            }
+                        if (bound_state->peripherals[expansion_slot_index] != NULL) {
+                            xemu_input_unbind_peripheral(active, expansion_slot_index);
 
                             // Free the existing state
-                            g_free((void *)bound_state->peripherals[i]);
-                            bound_state->peripherals[i] = NULL;
+                            g_free((void *)bound_state->peripherals[expansion_slot_index]);
+                            bound_state->peripherals[expansion_slot_index] = NULL;
                         }
 
                         // Change the peripheral type to the newly selected type
-                        bound_state->peripheral_types[i] =
+                        bound_state->peripheral_types[expansion_slot_index] =
                             (enum peripheral_type)j;
 
                         // Allocate state for the new peripheral
                         switch(j)
                         {
                             case PERIPHERAL_XMU:
-                                bound_state->peripherals[i] =
+                                bound_state->peripherals[expansion_slot_index] =
                                     g_malloc(sizeof(XmuState));
-                                memset(bound_state->peripherals[i], 0,
+                                memset(bound_state->peripherals[expansion_slot_index], 0,
                                     sizeof(XmuState));
                                 xemu_save_peripheral_settings(
-                                    active, i, bound_state->peripheral_types[i], 
+                                    active, expansion_slot_index, bound_state->peripheral_types[expansion_slot_index], 
                                     NULL);
                                 break;
                             case PERIPHERAL_XBLC:
-                                bound_state->peripherals[i] =
+                                bound_state->peripherals[expansion_slot_index] =
                                     g_malloc(sizeof(XblcState));
-                                memset(bound_state->peripherals[i], 0,
+                                memset(bound_state->peripherals[expansion_slot_index], 0,
                                     sizeof(XblcState));
-                                xemu_save_peripheral_settings(
-                                    active, i, bound_state->peripheral_types[i], 
-                                    "Default|Default");
-                                if(xemu_input_bind_xblc(active, i, "Default", "Default", 
-                                                        false))
-                                {
-                                    char *buf = g_strdup_printf(
-                                        "Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c.", 
-                                        active + 1, 'A' + i);
-                                    xemu_queue_notification(buf);
-                                    g_free(buf);
+                                char *outputDeviceName, *inputDeviceName;
+                                SDL_AudioSpec spec;
+                                int result = SDL_GetDefaultAudioInfo(&outputDeviceName, &spec, 0);
+                                if(result == 0) {
+                                    result = SDL_GetDefaultAudioInfo(&inputDeviceName, &spec, 1);    
+                                    if(result == 0) {
+                                        char *buf = g_strdup_printf("%s|%s", 
+                                            outputDeviceName, inputDeviceName);
+                                        xemu_save_peripheral_settings(
+                                            active, expansion_slot_index, bound_state->peripheral_types[expansion_slot_index], 
+                                            buf);
+                                        if(xemu_input_bind_xblc(active, outputDeviceName, inputDeviceName, false)) {
+                                            char *buf = g_strdup_printf(
+                                                "Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c.", 
+                                                active + 1, 'A' + expansion_slot_index);
+                                            xemu_queue_notification(buf);
+                                            g_free(buf);
+                                        }
+                                        SDL_free(inputDeviceName);
+                                    }
+                                    SDL_free(outputDeviceName);
                                 }
                                 break;
                         }
-
-                        
                     }
 
                     if (is_selected) {
@@ -389,15 +387,15 @@ void MainMenuInputView::Draw()
                        2 * port_padding * g_viewport_mgr.m_scale) /
                       2));
 
-            selected_type = bound_state->peripheral_types[i];
+            selected_type = bound_state->peripheral_types[expansion_slot_index];
             if (selected_type == PERIPHERAL_XMU) {
-                float x = xmu_x + i * xmu_x_stride;
+                float x = xmu_x + expansion_slot_index * xmu_x_stride;
                 float y = xmu_y;
 
                 xmu_fbo->Target();
                 id = (ImTextureID)(intptr_t)xmu_fbo->Texture();
 
-                XmuState *xmu = (XmuState *)bound_state->peripherals[i];
+                XmuState *xmu = (XmuState *)bound_state->peripherals[expansion_slot_index];
                 if (xmu->filename != NULL && strlen(xmu->filename) > 0) {
                     RenderXmu(x, y, 0x81dc8a00, 0x0f0f0f00);
 
@@ -420,8 +418,8 @@ void MainMenuInputView::Draw()
                     (int)((ImGui::GetColumnWidth() - xmu_display_size.x) /
                           2.0));
 
-                ImGui::Image(id, xmu_display_size, ImVec2(0.5f * i, 1),
-                             ImVec2(0.5f * (i + 1), 0));
+                ImGui::Image(id, xmu_display_size, ImVec2(0.5f * expansion_slot_index, 1),
+                             ImVec2(0.5f * (expansion_slot_index + 1), 0));
                 ImVec2 pos = ImGui::GetCursorPos();
 
                 xmu_fbo->Restore();
@@ -429,7 +427,7 @@ void MainMenuInputView::Draw()
                 ImGui::SetCursorPos(pos);
 
                 // Button to generate a new XMU
-                ImGui::PushID(i);
+                ImGui::PushID(expansion_slot_index);
                 if (ImGui::Button("New Image", ImVec2(250, 0))) {
                     int flags = NOC_FILE_DIALOG_SAVE |
                                 NOC_FILE_DIALOG_OVERWRITE_CONFIRMATION;
@@ -439,7 +437,7 @@ void MainMenuInputView::Draw()
                     if (new_path) {
                         if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
                             // XMU was created successfully. Bind it
-                            xemu_input_bind_xmu(active, i, new_path, false);
+                            xemu_input_bind_xmu(active, expansion_slot_index, new_path, false);
                         } else {
                             // Show alert message
                             char *msg = g_strdup_printf(
@@ -457,22 +455,22 @@ void MainMenuInputView::Draw()
                     xmu_port_path = g_strdup(xmu->filename);
                 if (FilePicker("Image", &xmu_port_path, img_file_filters)) {
                     if (strlen(xmu_port_path) == 0) {
-                        xemu_input_unbind_xmu(active, i);
+                        xemu_input_unbind_peripheral(active, expansion_slot_index);
                     } else {
-                        xemu_input_bind_xmu(active, i, xmu_port_path, false);
+                        xemu_input_bind_xmu(active, expansion_slot_index, xmu_port_path, false);
                     }
                 }
-                g_free((void *)xmu_port_path);
+                g_free((void*)xmu_port_path);
 
                 ImGui::PopID();
             } else if(selected_type == PERIPHERAL_XBLC) {
-                float x = xblc_x + i * xblc_x_stride;
+                float x = xblc_x + expansion_slot_index * xblc_x_stride;
                 float y = xblc_y;
 
                 xblc_fbo->Target();
                 id = (ImTextureID)(intptr_t)xblc_fbo->Texture();
 
-                XblcState *xblc = (XblcState *)bound_state->peripherals[i];
+                XblcState *xblc = (XblcState *)bound_state->peripherals[expansion_slot_index];
                 if (xblc->dev != NULL) {
                     RenderXblc(x, y, 0x81dc8a00, 0x0f0f0f00);
                 } else {
@@ -494,35 +492,30 @@ void MainMenuInputView::Draw()
                     (int)((ImGui::GetColumnWidth() - xblc_display_size.x) /
                           2.0));
 
-                ImGui::Image(id, xblc_display_size, ImVec2(0.5f * i, 1),
-                             ImVec2(0.5f * (i + 1), 0));
+                ImGui::Image(id, xblc_display_size, ImVec2(0.5f * expansion_slot_index, 1),
+                             ImVec2(0.5f * (expansion_slot_index + 1), 0));
 
                 xblc_fbo->Restore();
 
                 const char *selected_output_device = xblc->output_device_name;
                 ImGui::Text("Output Device");
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                if(ImGui::BeginCombo("###Output Device", selected_output_device, 
+                if(ImGui::BeginCombo("###OutputDevice", selected_output_device, 
                     ImGuiComboFlags_NoArrowButton)) {
 
                     int numOutputDevices = SDL_GetNumAudioDevices(0);
-                    for(int i = 0; i < numOutputDevices; i++) {
-                        const char *output_device_name = SDL_GetAudioDeviceName(i, 0);
+                    for(int device_index = 0; device_index < numOutputDevices; device_index++) {
+                        const char *output_device_name = SDL_GetAudioDeviceName(device_index, 0);
                         bool is_selected = strcmp(output_device_name, selected_output_device) == 0;
                         if(ImGui::Selectable(output_device_name, is_selected)) {
-                            xblc->output_device_name = output_device_name;
+                            xblc->output_device_name = g_strdup(output_device_name);
+                            if(xblc->dev != NULL)
+                                xblc_audio_stream_reinit(xblc->dev);
                             char *buf = g_strdup_printf("%s|%s", 
                                 xblc->output_device_name, xblc->input_device_name);
-                            xemu_save_peripheral_settings(active, i, 
-                                bound_state->peripheral_types[i],
+                            xemu_save_peripheral_settings(active, expansion_slot_index, 
+                                bound_state->peripheral_types[expansion_slot_index],
                                 buf);
-                            // SDL_AudioSpec desiredSpec;
-                            // desiredSpec.freq = 24000;
-                            // desiredSpec.format = AUDIO_S16;
-                            // desiredSpec.channels = 1;
-                            // desiredSpec.samples = 4096;
-                            // desiredSpec.callback = NULL;
-                            // xblc->output_device = SDL_OpenAudioDevice(xblc->output_device_name, 1, &desiredSpec, &xblc->output_device_spec, SDL_AUDIO_ALLOW_ANY_CHANGE);
                         }
                     }
 
@@ -533,27 +526,24 @@ void MainMenuInputView::Draw()
                 const char *selected_input_device = xblc->input_device_name;
                 ImGui::Text("Input Device");
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                if(ImGui::BeginCombo("###Input Device", selected_input_device, 
+                if(ImGui::BeginCombo("###InputDevice", selected_input_device, 
                     ImGuiComboFlags_NoArrowButton)) {
 
                     int numInputDevices = SDL_GetNumAudioDevices(1);
-                    for(int i = 0; i < numInputDevices; i++) {
-                        const char *input_device_name = SDL_GetAudioDeviceName(i, 1);
+                    for(int device_index = 0; device_index < numInputDevices; device_index++) {
+                        const char *input_device_name = SDL_GetAudioDeviceName(device_index, 1);
                         bool is_selected = strcmp(input_device_name, selected_input_device) == 0;
                         if(ImGui::Selectable(input_device_name, is_selected)) {
-                            xblc->input_device_name = input_device_name;
+                            if(xblc->input_device_name != NULL)
+                                g_free((void*)xblc->input_device_name);
+                            xblc->input_device_name = g_strdup(input_device_name);
+                            if(xblc->dev != NULL)
+                                xblc_audio_stream_reinit(xblc->dev);
                             char *buf = g_strdup_printf("%s|%s", 
                                 xblc->output_device_name, xblc->input_device_name);
-                            xemu_save_peripheral_settings(active, i, 
-                                bound_state->peripheral_types[i],
+                            xemu_save_peripheral_settings(active, expansion_slot_index, 
+                                bound_state->peripheral_types[expansion_slot_index],
                                 buf);
-                            // SDL_AudioSpec desiredSpec;
-                            // desiredSpec.freq = 24000;
-                            // desiredSpec.format = AUDIO_S16;
-                            // desiredSpec.channels = 1;
-                            // desiredSpec.samples = 4096;
-                            // desiredSpec.callback = NULL;
-                            // xblc->input_device = SDL_OpenAudioDevice(xblc->input_device_name, 1, &desiredSpec, &xblc->input_device_spec, SDL_AUDIO_ALLOW_ANY_CHANGE);
                         }
                     }
 
