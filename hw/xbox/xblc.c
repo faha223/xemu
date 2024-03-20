@@ -290,7 +290,7 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
 
         if(s->out.device_name != NULL)
             g_free(s->out.device_name);
-        s->out.device_name == g_strdup(s->out.device_name);
+        s->out.device_name = g_strdup(xblc->output_device_name);
         
         SDL_AudioSpec desired_spec;
         desired_spec.channels = 1;
@@ -308,8 +308,6 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
         DPRINTF("OutputDevice: Wanted samples %d, Obtained samples %d\n", desired_spec.samples, s->out.spec.samples);
         
         SDL_PauseAudioDevice(s->out.voice, 0);
-
-        s->out.device_name = g_strdup(xblc->output_device_name);
     } else {
         DPRINTF("Output Stream will not change\n");
     }
