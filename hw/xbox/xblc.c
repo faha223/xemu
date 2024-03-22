@@ -52,7 +52,10 @@
 #define XBLC_MAX_PACKET 48
 #define XBLC_FIFO_SIZE (XBLC_MAX_PACKET * 100) //~100 ms worth of audio at 16bit 24kHz
 
-static const uint8_t silence[256] = {0};
+#define NULL_DEFAULT(a, b) (a == NULL ? b : a)
+
+#define SILENCE_BUFFER_SIZE 256
+static const uint8_t silence[SILENCE_BUFFER_SIZE] = {0};
 
 static const uint16_t xblc_sample_rates[5] = {
     8000, 11025, 16000, 22050, 24000
@@ -60,9 +63,10 @@ static const uint16_t xblc_sample_rates[5] = {
 
 typedef struct XBLCStream {
     char *device_name;
-    QemuMutex mutex;
     SDL_AudioDeviceID voice;
     SDL_AudioSpec spec;
+    uint8_t packet[XBLC_MAX_PACKET];
+    Fifo8 fifo;
 } XBLCStream;
 
 typedef struct USBXBLCState {
@@ -161,16 +165,46 @@ static void usb_xblc_handle_reset(USBDevice *dev)
 
     DPRINTF("[XBLC] Reset\n");
 
-    qemu_mutex_lock(&s->in.mutex);
-    qemu_mutex_lock(&s->out.mutex);
-    
     if(s->in.voice != 0)
-        SDL_ClearQueuedAudio(s->in.voice);
+        SDL_LockAudioDevice(s->in.voice);
     if(s->out.voice != 0)
-        SDL_ClearQueuedAudio(s->out.voice);
-    
-    qemu_mutex_unlock(&s->out.mutex);
-    qemu_mutex_unlock(&s->in.mutex);
+        SDL_LockAudioDevice(s->out.voice);
+
+    fifo8_reset(&s->in.fifo);
+    fifo8_reset(&s->out.fifo);
+
+    if(s->in.voice != 0)
+        SDL_UnlockAudioDevice(s->in.voice);
+    if(s->out.voice != 0)
+        SDL_UnlockAudioDevice(s->out.voice);
+}
+
+static void output_callback(void *userdata, uint8_t *stream, int len)
+{
+    USBXBLCState *s = (USBXBLCState *)userdata;
+    const uint8_t *data;
+    uint32_t max_len;
+    if(fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
+        memcpy(stream, (void*)silence, MIN(len, ARRAY_SIZE(silence)));
+        return;
+    }
+
+    while(len > 0 && !fifo8_is_empty(&s->out.fifo)) {
+        max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)len);
+        data = fifo8_pop_buf(&s->out.fifo, max_len, &max_len);
+        memcpy(stream, data, max_len);
+        len -= max_len;
+    }
+}
+
+static void input_callback(void *userdata, uint8_t *stream, int len)
+{
+    USBXBLCState *s = (USBXBLCState *)userdata;
+
+    // Don't try to put more into the queue than will fit
+    uint32_t max_len = MIN(len, fifo8_num_free(&s->in.fifo));
+    if(max_len > 0)
+        fifo8_push_all(&s->in.fifo, stream, max_len);
 }
 
 #ifdef DEBUG_XBLC
@@ -199,7 +233,7 @@ static const char *GetFormatString(SDL_AudioFormat format)
 static void xblc_audio_channel_init(USBXBLCState *s, bool capture, const char *device_name)
 {
     XBLCStream *channel = capture ? &s->in : &s->out;
-    qemu_mutex_lock(&channel->mutex);
+    
     if(channel->voice != 0) {
         SDL_PauseAudioDevice(channel->voice, 1);
         SDL_CloseAudioDevice(channel->voice);
@@ -208,14 +242,20 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, const char *d
 
     if(channel->device_name != NULL)
         g_free(channel->device_name);
-    channel->device_name = g_strdup(device_name);
+    if(device_name == NULL)
+        channel->device_name = NULL;
+    else
+        channel->device_name = g_strdup(device_name);
+
+    fifo8_reset(&channel->fifo);
 
     SDL_AudioSpec desired_spec;
     desired_spec.channels = 1;
     desired_spec.freq = s->sample_rate;
     desired_spec.format = AUDIO_S16LSB;
-    desired_spec.samples = 10 * XBLC_MAX_PACKET; // buffer 20 packets
-    desired_spec.callback = NULL;
+    desired_spec.samples = 100;
+    desired_spec.userdata = (void*)s;
+    desired_spec.callback = capture ? input_callback : output_callback;
 
     channel->voice = SDL_OpenAudioDevice(device_name,
                                          (int)capture, 
@@ -223,14 +263,33 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, const char *d
                                          &channel->spec, 
                                          0);
 
-    DPRINTF("%sputDevice: %s\n", capture ? "In" : "Out", device_name);
+    DPRINTF("%sputDevice: %s\n", capture ? "In" : "Out", NULL_DEFAULT(device_name, "Default"));
     DPRINTF("%sputDevice: Wanted %d Channels, Obtained %d Channels\n", capture ? "In" : "Out", desired_spec.channels, channel->spec.channels);
     DPRINTF("%sputDevice: Wanted %d hz, Obtained %d hz\n", capture ? "In" : "Out", desired_spec.freq, channel->spec.freq);
     DPRINTF("%sputDevice: Wanted %s, Obtained %s\n", capture ? "In" : "Out", GetFormatString(desired_spec.format), GetFormatString(channel->spec.format));
     DPRINTF("%sputDevice: Wanted samples %d, Obtained samples %d\n", capture ? "In" : "Out", desired_spec.samples, channel->spec.samples);
 
     SDL_PauseAudioDevice(channel->voice, 0);
-    qemu_mutex_unlock(&channel->mutex);
+}
+
+static bool should_init_stream(const XBLCStream *stream, const char *requested_device_name)
+{
+    // If the voice has not been initialized, initialize it
+    if (stream->voice == 0)
+        return true;
+    
+    // If one of the names is null and the other is not, initialize it
+    if ((stream->device_name == NULL) ^ (requested_device_name == NULL))
+        return true;
+    
+    // If neither name is null, but they don't match, initialize it
+    if (stream->device_name != NULL &&
+             requested_device_name != NULL &&
+             strcmp(stream->device_name, requested_device_name) != 0)
+        return true;
+
+    // We don't need to initialize it
+    return false;
 }
 
 static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
@@ -243,8 +302,6 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
     assert(controller->peripherals[0] != NULL);
 
     XblcState *xblc = (XblcState*)controller->peripherals[0];
-    assert(xblc->input_device_name);
-    assert(xblc->output_device_name);
 
     if(s->sample_rate != sample_rate) {
         init_input_stream = true;
@@ -252,15 +309,8 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
         s->sample_rate = sample_rate;
     }
 
-    if(s->in.device_name == NULL)
-        init_input_stream = true;
-    else if(strcmp(s->in.device_name, xblc->input_device_name) != 0)
-        init_input_stream = true;
-
-    if(s->out.device_name == NULL)
-        init_output_stream = true;
-    else if(strcmp(s->out.device_name, xblc->output_device_name) != 0)
-        init_output_stream = true;
+    init_input_stream |= should_init_stream(&s->in, xblc->input_device_name);
+    init_output_stream |= should_init_stream(&s->out, xblc->output_device_name);
 
     if (init_input_stream) {
         xblc_audio_channel_init(s, true, xblc->input_device_name);
@@ -321,33 +371,29 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p,
 static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 {
     USBXBLCState *s = (USBXBLCState *)dev;
-    uint32_t to_process, chunk_len;
-    uint8_t packet[XBLC_MAX_PACKET];
+    uint32_t to_process = 0, chunk_len = 0;
             
     switch (p->pid) {
     case USB_TOKEN_IN:
-        // Microphone Data - Get data from audio device and copy into usb packet
+        // Microphone Data - Get data from fifo and copy into usb packet
         assert(p->ep->nr == XBLC_EP_IN);
-        qemu_mutex_lock(&s->in.mutex);
-        if(s->in.voice != 0)
-        {
-            to_process = MIN(XBLC_MAX_PACKET, p->iov.size);
-            chunk_len = SDL_DequeueAudio(s->in.voice, packet, to_process);
-            usb_packet_copy(p, packet, chunk_len);
+                to_process = MIN(fifo8_num_used(&s->in.fifo), p->iov.size);
+        chunk_len = 0;
+
+        // fifo may not give us a contiguous packet, so may need multiple calls
+        while (to_process) {
+            const uint8_t *packet = fifo8_pop_buf(&s->in.fifo, to_process, &chunk_len);
+            usb_packet_copy(p, (void *)packet, chunk_len);
+            to_process -= chunk_len;
         }
-        qemu_mutex_unlock(&s->in.mutex);
         break;
     case USB_TOKEN_OUT:
-        // Speaker data - get data from usb packet then queue in audio device.
+        // Speaker data - get data from usb packet then push to fifo.
         assert(p->ep->nr == XBLC_EP_OUT);
-        qemu_mutex_lock(&s->out.mutex);
-        if(s->out.voice != 0)
-        {
-            to_process = MIN(XBLC_MAX_PACKET, p->iov.size);
-            usb_packet_copy(p, packet, to_process);
-            SDL_QueueAudio(s->out.voice, packet, to_process);
-        }
-        qemu_mutex_unlock(&s->out.mutex);
+        to_process = MIN(fifo8_num_free(&s->out.fifo), p->iov.size);
+        usb_packet_copy(p, s->out.packet, to_process);
+        fifo8_push_all(&s->out.fifo, s->out.packet, to_process);
+
         break;
     default:
         //Iso cannot report STALL/HALT, but we shouldn't be here anyway.
@@ -357,8 +403,8 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 
     // Ensure we fill the entire packet regardless of if we have audio data so we don't
     // cause an underrun error.
-    if (p->actual_length < p->iov.size)
-        usb_packet_copy(p, (void *)silence, p->iov.size - p->actual_length);
+    while (p->actual_length < p->iov.size)
+        usb_packet_copy(p, (void *)silence, MIN(SILENCE_BUFFER_SIZE, p->iov.size - p->actual_length));
 
 }
 
@@ -366,17 +412,14 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
 
-    qemu_mutex_lock(&s->in.mutex);
     SDL_PauseAudioDevice(s->in.voice, 1);
-    SDL_CloseAudioDevice(s->in.voice);
-    s->in.voice = 0;
-    qemu_mutex_unlock(&s->in.mutex);
-
-    qemu_mutex_lock(&s->out.mutex);
     SDL_PauseAudioDevice(s->out.voice, 1);
-    SDL_CloseAudioDevice(s->out.voice);
-    s->out.voice = 0;
-    qemu_mutex_unlock(&s->out.mutex);    
+    
+    fifo8_destroy(&s->out.fifo);
+    fifo8_destroy(&s->in.fifo);
+
+    SDL_CloseAudioDevice(s->in.voice);
+    SDL_CloseAudioDevice(s->out.voice);    
 }
 
 static void usb_xblc_class_initfn(ObjectClass *klass, void *data)
@@ -394,8 +437,8 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
 
-    qemu_mutex_init(&s->in.mutex);
-    qemu_mutex_init(&s->out.mutex);
+    fifo8_create(&s->in.fifo, XBLC_FIFO_SIZE);
+    fifo8_create(&s->out.fifo, XBLC_FIFO_SIZE);
 }
 
 static Property xblc_properties[] = {
