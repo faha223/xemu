@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "ui/shader/xemu-logo-frag.h"
+#include "../../hw/xbox/xblc.h"
 
 Fbo *controller_fbo, *xmu_fbo, *xblc_fbo, *logo_fbo;
 GLuint g_controller_tex, g_logo_tex, g_icon_tex, g_xmu_tex, g_xblc_tex;
@@ -678,7 +679,7 @@ void RenderXmu(float frame_x, float frame_y, uint32_t primary_color,
     glUseProgram(0);
 }
 
-void RenderXblc(float frame_x, float frame_y, uint32_t primary_color,
+void RenderXblc(XblcState *xblc, float frame_x, float frame_y, uint32_t primary_color,
                 uint32_t secondary_color)
 {
     glUseProgram(g_decal_shader->prog);
@@ -693,6 +694,12 @@ void RenderXblc(float frame_x, float frame_y, uint32_t primary_color,
                 tex_items[obj_xblc].x, tex_items[obj_xblc].y,
                 tex_items[obj_xblc].w, tex_items[obj_xblc].h, primary_color,
                 secondary_color, 0);
+
+    if(xblc->dev != NULL) {
+        int average_volume = xblc_audio_stream_get_average_input_volume(xblc->dev);
+        float percent = average_volume / 32768.0f;
+        RenderMeter(g_decal_shader, 4, 4, 252, 5, percent, primary_color + 0x40, primary_color + 0xFF);
+    }
 
     glBindVertexArray(0);
     glUseProgram(0);

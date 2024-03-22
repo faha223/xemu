@@ -25,6 +25,11 @@ extern "C" {
 #endif
 
 void xblc_audio_stream_reinit(void *dev);
+int xblc_audio_stream_get_output_volume(void *dev);
+int xblc_audio_stream_get_input_volume(void *dev);
+void xblc_audio_stream_set_output_volume(void *dev, int volume);
+void xblc_audio_stream_set_input_volume(void *dev, int volume);
+int xblc_audio_stream_get_average_input_volume(void *dev);
 
 #ifdef __cplusplus
 }

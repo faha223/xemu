@@ -76,10 +76,6 @@ typedef struct XmuState {
 typedef struct XblcState {
     const char *output_device_name;
     const char *input_device_name;
-    SDL_AudioSpec output_device_spec;
-    SDL_AudioSpec input_device_spec;
-    SDL_AudioDeviceID output_device;
-    SDL_AudioDeviceID input_device;
     void *dev;
 } XblcState;
 

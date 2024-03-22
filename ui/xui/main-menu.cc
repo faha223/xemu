@@ -344,19 +344,13 @@ void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_
                 switch(j)
                 {
                     case PERIPHERAL_XMU:
-                        bound_state->peripherals[expansion_slot_index] =
-                            g_malloc(sizeof(XmuState));
-                        memset(bound_state->peripherals[expansion_slot_index], 0,
-                            sizeof(XmuState));
-                        xemu_save_peripheral_settings(
-                            active, expansion_slot_index, bound_state->peripheral_types[expansion_slot_index], 
-                            NULL);
+                        bound_state->peripherals[expansion_slot_index] = g_malloc(sizeof(XmuState));
+                        memset(bound_state->peripherals[expansion_slot_index], 0, sizeof(XmuState));
+                        xemu_save_peripheral_settings(active, expansion_slot_index, bound_state->peripheral_types[expansion_slot_index], NULL);
                         break;
                     case PERIPHERAL_XBLC:
-                        bound_state->peripherals[expansion_slot_index] =
-                            g_malloc(sizeof(XblcState));
-                        memset(bound_state->peripherals[expansion_slot_index], 0,
-                            sizeof(XblcState));
+                        bound_state->peripherals[expansion_slot_index] = g_malloc(sizeof(XblcState));
+                        memset(bound_state->peripherals[expansion_slot_index], 0, sizeof(XblcState));
                         if(xemu_input_bind_xblc(active, NULL, NULL, false)) {
                             char *buf = g_strdup_printf(
                                 "Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c.", 
@@ -414,7 +408,7 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
     ImTextureID id = (ImTextureID)(intptr_t)xmu_fbo->Texture();
 
     XmuState *xmu = (XmuState *)bound_state->peripherals[expansion_slot_index];
-    uint32_t fg_color = (xmu->filename != NULL && strlen(xmu->filename) > 0) ? 0x1f1f1f00 : 0x81dc8a00;
+    uint32_t fg_color = (xmu->filename != NULL && strlen(xmu->filename) > 0) ? 0x81dc8a00 : 0x1f1f1f00;
     RenderXmu(x, y, fg_color, 0x0f0f0f00);
 
     ImVec2 xmu_display_size;
@@ -548,6 +542,25 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
     DrawComboChevron();
 }
 
+static void DrawVolumeControlSlider(int active, XblcState *xblc, int is_capture)
+{
+    int sdl_volume = (is_capture == 0) ?
+        xblc_audio_stream_get_output_volume(xblc->dev) :
+        xblc_audio_stream_get_input_volume(xblc->dev);
+    const char *drag_label = (is_capture == 0) ? "###OutputVolume" : "###InputVolume";
+    float ui_volume = sdl_volume * 100.0f / 128.0f;
+    
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if(ImGui::DragFloat(drag_label, &ui_volume, 1.0f, 0.0f, 100.f, "%.2f%%", ImGuiSliderFlags_AlwaysClamp)) {
+        int new_sdl_volume = (int)(1.28f * ui_volume);
+        if(is_capture == 0) {
+            xblc_audio_stream_set_output_volume(xblc->dev, new_sdl_volume);
+        } else {
+            xblc_audio_stream_set_input_volume(xblc->dev, new_sdl_volume);
+        }
+    }
+}
+
 void MainMenuInputView::DrawXblcSettings(int active, int expansion_slot_index)
 {
     // Dimensions of XBLC
@@ -573,7 +586,7 @@ void MainMenuInputView::DrawXblcSettings(int active, int expansion_slot_index)
 
     XblcState *xblc = (XblcState *)bound_state->peripherals[expansion_slot_index];
     uint32_t fg_color = (xblc->dev == NULL) ? 0x1f1f1f00 : 0x81dc8a00;
-    RenderXblc(x, y, fg_color, 0x0f0f0f00);
+    RenderXblc(xblc, x, y, fg_color, 0x0f0f0f00);
 
     ImVec2 xblc_display_size;
     if (ImGui::GetContentRegionMax().x < xblc_h * g_viewport_mgr.m_scale) {
@@ -595,7 +608,9 @@ void MainMenuInputView::DrawXblcSettings(int active, int expansion_slot_index)
     xblc_fbo->Restore();
 
     DrawAudioDeviceSelectComboBox(active, xblc, 0);
+    DrawVolumeControlSlider(active, xblc, 0);
     DrawAudioDeviceSelectComboBox(active, xblc, 1);
+    DrawVolumeControlSlider(active, xblc, 1);
 }
 
 void MainMenuDisplayView::Draw()

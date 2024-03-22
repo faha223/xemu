@@ -67,6 +67,8 @@ typedef struct XBLCStream {
     SDL_AudioSpec spec;
     uint8_t packet[XBLC_MAX_PACKET];
     Fifo8 fifo;
+    int volume;
+    int average_volume;
 } XBLCStream;
 
 typedef struct USBXBLCState {
@@ -179,32 +181,97 @@ static void usb_xblc_handle_reset(USBDevice *dev)
         SDL_UnlockAudioDevice(s->out.voice);
 }
 
+int xblc_audio_stream_get_average_input_volume(void *dev)
+{
+    USBXBLCState *s = (USBXBLCState*)dev;
+    return s->in.average_volume;
+}
+
+int xblc_audio_stream_get_output_volume(void *dev)
+{
+    USBXBLCState *s = (USBXBLCState*)dev;
+    return s->out.volume;
+}
+
+int xblc_audio_stream_get_input_volume(void *dev)
+{
+    USBXBLCState *s = (USBXBLCState*)dev;
+    return s->in.volume;
+}
+
+void xblc_audio_stream_set_output_volume(void *dev, int volume)
+{
+    USBXBLCState *s = (USBXBLCState*)dev;
+    s->out.volume = volume;
+}
+void xblc_audio_stream_set_input_volume(void *dev, int volume)
+{
+    USBXBLCState *s = (USBXBLCState*)dev;
+    s->in.volume = volume;
+}
+
 static void output_callback(void *userdata, uint8_t *stream, int len)
 {
     USBXBLCState *s = (USBXBLCState *)userdata;
     const uint8_t *data;
     uint32_t max_len;
-    if(fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
+    if (fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
         memcpy(stream, (void*)silence, MIN(len, ARRAY_SIZE(silence)));
-        return;
-    }
+    } else {
+        while (len > 0 && !fifo8_is_empty(&s->out.fifo)) {
+            max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)len);
+            data = fifo8_pop_buf(&s->out.fifo, max_len, &max_len);
 
-    while(len > 0 && !fifo8_is_empty(&s->out.fifo)) {
-        max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)len);
-        data = fifo8_pop_buf(&s->out.fifo, max_len, &max_len);
-        memcpy(stream, data, max_len);
-        len -= max_len;
+            if(s->out.volume > SDL_MIX_MAXVOLUME) {
+                memcpy(stream, data, max_len);
+                SDL_MixAudioFormat(stream, data, AUDIO_S16LSB, max_len, MIN(s->out.volume - SDL_MIX_MAXVOLUME, SDL_MIX_MAXVOLUME));
+            } else if(s->out.volume < SDL_MIX_MAXVOLUME) {
+                memset(stream, 0, len);
+                SDL_MixAudioFormat(stream, data, AUDIO_S16LSB, max_len, MAX(0, s->out.volume));
+            } else {
+                memcpy(stream, data, max_len);
+            }
+            stream += max_len;
+            len -= max_len;
+        }
     }
+}
+
+static int calc_average_amplitude(const int16_t *samples, int len) {
+    int max = 0;
+    for(int i = 0; i < len / 2; i++) {
+        max = MAX(max, abs(samples[i]));
+    }
+    return max;
 }
 
 static void input_callback(void *userdata, uint8_t *stream, int len)
 {
     USBXBLCState *s = (USBXBLCState *)userdata;
+    const uint16_t *samples;
+
+    s->in.average_volume = s->in.volume * 
+        calc_average_amplitude((int16_t*)stream, len / 2) / 128;
 
     // Don't try to put more into the queue than will fit
     uint32_t max_len = MIN(len, fifo8_num_free(&s->in.fifo));
-    if(max_len > 0)
-        fifo8_push_all(&s->in.fifo, stream, max_len);
+    if (max_len > 0) {
+        if(s->in.volume > SDL_MIX_MAXVOLUME) {
+            uint8_t *buffer = g_malloc(max_len);
+            memcpy(stream, buffer, max_len);
+            SDL_MixAudioFormat(buffer, stream, AUDIO_S16LSB, max_len, MIN(s->in.volume - SDL_MIX_MAXVOLUME, SDL_MIX_MAXVOLUME));
+            fifo8_push_all(&s->in.fifo, buffer, max_len);
+            g_free(buffer);
+        } else if(s->in.volume < SDL_MIX_MAXVOLUME) {
+            uint8_t *buffer = g_malloc(max_len);
+            memset(buffer, 0, max_len);
+            SDL_MixAudioFormat(buffer, stream, AUDIO_S16LSB, max_len, MAX(s->in.volume, 0));
+            fifo8_push_all(&s->in.fifo, buffer, max_len);
+            g_free(buffer);
+        } else {
+            fifo8_push_all(&s->in.fifo, stream, max_len);
+        }
+    }
 }
 
 #ifdef DEBUG_XBLC
@@ -248,6 +315,8 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, const char *d
         channel->device_name = g_strdup(device_name);
 
     fifo8_reset(&channel->fifo);
+    if(capture)
+        s->in.average_volume = 0;
 
     SDL_AudioSpec desired_spec;
     desired_spec.channels = 1;
@@ -262,7 +331,7 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, const char *d
                                          &desired_spec, 
                                          &channel->spec, 
                                          0);
-
+    
     DPRINTF("%sputDevice: %s\n", capture ? "In" : "Out", NULL_DEFAULT(device_name, "Default"));
     DPRINTF("%sputDevice: Wanted %d Channels, Obtained %d Channels\n", capture ? "In" : "Out", desired_spec.channels, channel->spec.channels);
     DPRINTF("%sputDevice: Wanted %d hz, Obtained %d hz\n", capture ? "In" : "Out", desired_spec.freq, channel->spec.freq);
@@ -439,6 +508,9 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
 
     fifo8_create(&s->in.fifo, XBLC_FIFO_SIZE);
     fifo8_create(&s->out.fifo, XBLC_FIFO_SIZE);
+
+    s->in.volume = SDL_MIX_MAXVOLUME;
+    s->out.volume = SDL_MIX_MAXVOLUME;
 }
 
 static Property xblc_properties[] = {
