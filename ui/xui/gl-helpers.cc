@@ -452,7 +452,7 @@ void InitCustomRendering(void)
     xmu_fbo = new Fbo(512, 256);
 
     g_xblc_tex = LoadTextureFromMemory(xblc_mask_data, xblc_mask_size);
-    xblc_fbo = new Fbo(512, 256);
+    xblc_fbo = new Fbo(256, 256);
 
     g_logo_tex = LoadTextureFromMemory(logo_sdf_data, logo_sdf_size);
     g_logo_shader = NewDecalShader(ShaderType::Logo);

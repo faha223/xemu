@@ -289,24 +289,24 @@ void MainMenuInputView::Draw()
 void MainMenuInputView::DrawExpansionSlotOptions(int active)
 {
     SectionTitle("Expansion Slots");
+
     // Begin a 2-column layout to render the expansion slots
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                        g_viewport_mgr.Scale(ImVec2(0, 12)));
-    ImGui::Columns(2, "mixed", false);
+                        g_viewport_mgr.Scale(ImVec2(8, 12)));
+    ImGui::Columns(2, nullptr, false);
 
-    for (int expansion_slot_index = 0; expansion_slot_index < 2; expansion_slot_index++) {
-        DrawExpansionSlotOptions(active, expansion_slot_index);
+    for (int i = 0; i < 2; i++) {
+        DrawExpansionSlotOptions(active, i);
         ImGui::NextColumn();
     }
 
-    ImGui::PopStyleVar(); // ItemSpacing
     ImGui::Columns(1);
+    ImGui::PopStyleVar(); // ItemSpacing
 }
 
 void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_index)
 {
     ControllerState *bound_state = xemu_input_get_bound(active);
-
     const char *comboLabels[2] = { "###ExpansionSlotA",
                                    "###ExpansionSlotB" };
     // Display a combo box to allow the user to choose the type of
@@ -318,7 +318,7 @@ void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_
         { PERIPHERAL_NONE, PERIPHERAL_XMU }                   // Slot B
     };
     const char *selected_peripheral_type = peripheral_type_names[selected_type];
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SetNextItemWidth(ImGui::GetColumnWidth() - (g_viewport_mgr.m_scale * 10));
     if (ImGui::BeginCombo(comboLabels[expansion_slot_index], selected_peripheral_type, ImGuiComboFlags_NoArrowButton)) {
         // Handle all available peripheral types
         for (int j = 0; j < 3 - expansion_slot_index; j++) {
@@ -388,6 +388,7 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
     const float xmu_x = 0, xmu_x_stride = 256, xmu_y = 0;
     const float xmu_w = 256, xmu_h = 256;
     const int port_padding = 8;
+    float max_width = ImGui::GetColumnWidth() - (10 * g_viewport_mgr.m_scale);
 
     const char *img_file_filters = ".img Files\0*.img\0All Files\0*.*\0";
 
@@ -412,8 +413,8 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
     RenderXmu(x, y, fg_color, 0x0f0f0f00);
 
     ImVec2 xmu_display_size;
-    if (ImGui::GetContentRegionMax().x < xmu_h * g_viewport_mgr.m_scale) {
-        xmu_display_size.x = ImGui::GetContentRegionMax().x / 2;
+    if (max_width < xmu_w * g_viewport_mgr.m_scale) {
+        xmu_display_size.x = max_width;
         xmu_display_size.y = xmu_display_size.x * xmu_h / xmu_w;
     } else {
         xmu_display_size = ImVec2(xmu_w * g_viewport_mgr.m_scale,
@@ -435,6 +436,7 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
 
     // Button to generate a new XMU
     ImGui::PushID(expansion_slot_index);
+    ImGui::SetNextItemWidth(max_width);
     if (ImGui::Button("New Image", ImVec2(250, 0))) {
         int flags = NOC_FILE_DIALOG_SAVE |
                     NOC_FILE_DIALOG_OVERWRITE_CONFIRMATION;
@@ -477,14 +479,16 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
     ControllerState *bound_state = xemu_input_get_bound(active);
     assert(bound_state);
 
+    float max_width = ImGui::GetColumnWidth() - (10 * g_viewport_mgr.m_scale);
+
     const char *default_device_name = "Default";
     const char *selected_device = (is_capture == 0) ? xblc->output_device_name : xblc->input_device_name;
     if(selected_device == NULL)
         selected_device = default_device_name;
-    const char *label_text = (is_capture == 0) ? "Output Device" : "Input Device";
-    const char *combo_label = (is_capture == 0) ? "###OutputDevice" : "###InputDevice";
+    const char *label_text = (is_capture == 0) ? "Speaker" : "Microphone";
+    const char *combo_label = (is_capture == 0) ? "###Speaker" : "###Microphone";
     ImGui::Text("%s", label_text);
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SetNextItemWidth(max_width);
     if(ImGui::BeginCombo(combo_label, selected_device, ImGuiComboFlags_NoArrowButton)) {
 
         int numOutputDevices = SDL_GetNumAudioDevices(is_capture);
@@ -544,19 +548,18 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
 
 static void DrawVolumeControlSlider(int active, XblcState *xblc, int is_capture)
 {
-    int sdl_volume = (is_capture == 0) ?
-        xblc_audio_stream_get_output_volume(xblc->dev) :
-        xblc_audio_stream_get_input_volume(xblc->dev);
-    const char *drag_label = (is_capture == 0) ? "###OutputVolume" : "###InputVolume";
-    float ui_volume = sdl_volume * 100.0f / 128.0f;
-    
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    if(ImGui::DragFloat(drag_label, &ui_volume, 1.0f, 0.0f, 100.f, "%.2f%%", ImGuiSliderFlags_AlwaysClamp)) {
-        int new_sdl_volume = (int)(1.28f * ui_volume);
+    float max_width = ImGui::GetColumnWidth() - (10 * g_viewport_mgr.m_scale);
+    float volume = (100.0f / 128.0f) * ((is_capture == 0) ? 
+                    xblc_audio_stream_get_output_volume(xblc->dev) :
+                    xblc_audio_stream_get_input_volume(xblc->dev));
+    const char *label = (is_capture == 0) ? "Microphone" : "Speaker";
+    ImGui::SetNextItemWidth(max_width);
+    if(ImGui::SliderFloat(label, &volume, 0, 200, "%.2f%%", ImGuiSliderFlags_AlwaysClamp)) {
+        int adjusted_volume = (int)(volume * 128 / 100);
         if(is_capture == 0) {
-            xblc_audio_stream_set_output_volume(xblc->dev, new_sdl_volume);
+            xblc_audio_stream_set_output_volume(xblc->dev, adjusted_volume);
         } else {
-            xblc_audio_stream_set_input_volume(xblc->dev, new_sdl_volume);
+            xblc_audio_stream_set_input_volume(xblc->dev, adjusted_volume);
         }
     }
 }
@@ -564,22 +567,23 @@ static void DrawVolumeControlSlider(int active, XblcState *xblc, int is_capture)
 void MainMenuInputView::DrawXblcSettings(int active, int expansion_slot_index)
 {
     // Dimensions of XBLC
-    const float xblc_x = 0, xblc_x_stride = 256, xblc_y = 0;
+    const float xblc_x = 0, xblc_y = 0;
     const float xblc_w = 256, xblc_h = 256;
     const int port_padding = 8;
+    float max_width = ImGui::GetColumnWidth() - (10 * g_viewport_mgr.m_scale);
 
     ControllerState *bound_state = xemu_input_get_bound(active);
     assert(bound_state);
 
-    float x = xblc_x + expansion_slot_index * xblc_x_stride;
+    float x = xblc_x;
     float y = xblc_y;
 
     ImGui::SetCursorPosX(
         ImGui::GetCursorPosX() +
-        (int)((ImGui::GetColumnWidth() -
-                xblc_w * g_viewport_mgr.m_scale -
-                2 * port_padding * g_viewport_mgr.m_scale) /
-                2));
+        (int)((max_width -
+               xblc_w * g_viewport_mgr.m_scale -
+               2 * port_padding * g_viewport_mgr.m_scale) /
+              2));
 
     xblc_fbo->Target();
     ImTextureID id = (ImTextureID)(intptr_t)xblc_fbo->Texture();
@@ -589,8 +593,8 @@ void MainMenuInputView::DrawXblcSettings(int active, int expansion_slot_index)
     RenderXblc(xblc, x, y, fg_color, 0x0f0f0f00);
 
     ImVec2 xblc_display_size;
-    if (ImGui::GetContentRegionMax().x < xblc_h * g_viewport_mgr.m_scale) {
-        xblc_display_size.x = ImGui::GetContentRegionMax().x / 2;
+    if (max_width < xblc_w * g_viewport_mgr.m_scale) {
+        xblc_display_size.x = max_width;
         xblc_display_size.y = xblc_display_size.x * xblc_h / xblc_w;
     } else {
         xblc_display_size = ImVec2(xblc_w * g_viewport_mgr.m_scale,
@@ -601,9 +605,7 @@ void MainMenuInputView::DrawXblcSettings(int active, int expansion_slot_index)
         ImGui::GetCursorPosX() +
         (int)((ImGui::GetColumnWidth() - xblc_display_size.x) / 2.0));
 
-    ImGui::Image(id, xblc_display_size, 
-                 ImVec2(0.5f * expansion_slot_index, 1),
-                 ImVec2(0.5f * (expansion_slot_index + 1), 0));
+    ImGui::Image(id, xblc_display_size, ImVec2(0, 1), ImVec2(1, 0));
 
     xblc_fbo->Restore();
 

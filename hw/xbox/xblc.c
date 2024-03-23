@@ -248,8 +248,7 @@ static int calc_average_amplitude(const int16_t *samples, int len) {
 static void input_callback(void *userdata, uint8_t *stream, int len)
 {
     USBXBLCState *s = (USBXBLCState *)userdata;
-    const uint16_t *samples;
-
+    
     s->in.average_volume = s->in.volume * 
         calc_average_amplitude((int16_t*)stream, len / 2) / 128;
 
