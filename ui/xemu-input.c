@@ -33,8 +33,9 @@
 #include "xemu-settings.h"
 
 #include "sysemu/blockdev.h"
+#include "../hw/xbox/xblc.h"
 
-//#define DEBUG_INPUT
+#define DEBUG_INPUT
 
 #ifdef DEBUG_INPUT
 #define DPRINTF(fmt, ...) \
@@ -363,6 +364,88 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
     } else if (event->type == SDL_CONTROLLERDEVICEREMAPPED) {
         DPRINTF("Controller Remapped: %d\n", event->cdevice.which);
     }
+}
+
+char *xemu_input_serialize_xblc_settings(XblcState *xblc)
+{
+    const char *default_device_name = "Default";
+
+    const char *output_device_label = xblc->output_device_name == NULL ?
+        default_device_name : xblc->output_device_name;
+    const char *input_device_label = xblc->input_device_name == NULL ?
+        default_device_name : xblc->input_device_name;
+
+    return g_strdup_printf("%d|%d|%s|%s", (int)(200 * xblc->output_device_volume), (int)(200 * xblc->input_device_volume), output_device_label, input_device_label);
+}
+
+XblcState *xemu_input_deserialize_xblc_settings(const char *param)
+{
+    const char *default_device_name = "Default";
+    char temp[1024];
+    memset(temp, 0, 1024);
+
+    XblcState *xblc = (XblcState*)g_malloc(sizeof(XblcState));
+    memset(xblc, 0, sizeof(XblcState));
+    xblc->input_device_volume = 0.5f;
+    xblc->output_device_volume = 0.5f;                
+
+    if(param != NULL) {
+        char *output_device = NULL;
+        char *input_device = NULL;
+        int output_device_volume = 100;
+        int input_device_volume = 100;
+
+        DPRINTF("Parameters: %s\n", param);
+        char *delimiterPtr = strchr(param, '|');
+        if(delimiterPtr != NULL) {
+            memset(temp, 0, 1024);
+            memcpy(temp, param, delimiterPtr - param);
+            output_device_volume = atoi(temp);
+            param = delimiterPtr+1;
+            delimiterPtr = strchr(param, '|');
+            if(delimiterPtr != NULL) {
+                memset(temp, 0, 1024);
+                memcpy(temp, param, delimiterPtr - param);
+                input_device_volume = atoi(temp);
+                param = delimiterPtr+1;
+                delimiterPtr = strchr(param, '|');
+                if(delimiterPtr != NULL) {
+                    output_device = g_strndup(param, delimiterPtr - param);
+                    input_device = g_strdup(delimiterPtr+1);
+
+                    DPRINTF("Output Volume: %d\n", output_device_volume);
+                    DPRINTF("Input Volume: %d\n", input_device_volume);
+                    DPRINTF("Output Device: %s\n", output_device);
+                    DPRINTF("Input Device: %s\n", input_device);
+                
+                    if(strcmp(output_device, default_device_name) == 0) {
+                        g_free((void*)output_device);
+                        output_device = NULL;
+                    }
+
+                    if(strcmp(input_device, default_device_name) == 0) {
+                        g_free((void*)input_device);
+                        input_device = NULL;
+                    }
+
+                    xblc->output_device_name = output_device;
+                    xblc->output_device_volume = output_device_volume / 200.0f;
+                    xblc->input_device_name = input_device;
+                    xblc->input_device_volume = input_device_volume / 200.0f;
+                } else {
+                    DPRINTF("Delimiter not found in %s\n", param);
+                }
+            } else {
+                DPRINTF("Delimiter not found in %s\n", param);
+            }
+        } else {
+            DPRINTF("Delimiter not found in %s\n", param);
+        }
+    } else {
+        DPRINTF("Param is NULL\n");
+    }
+
+    return xblc;
 }
 
 void xemu_input_update_controller(ControllerState *state)
@@ -909,14 +992,14 @@ bool xemu_input_bind_xblc(int player_index, const char *output_device,
     assert(dev);
 
     xblc->dev = (void *)dev;
+    xblc_audio_stream_set_output_volume(xblc->dev, (int)(256 * xblc->output_device_volume));
+    xblc_audio_stream_set_input_volume(xblc->dev, (int)(256 * xblc->input_device_volume));
 
     // Unref for eventual cleanup
     qobject_unref(qdict);
 
     if (!is_rebind) {
-        if(output_device == NULL) output_device = "Default";
-        if(input_device == NULL) input_device = "Default";
-        char *buf = g_strdup_printf("%s|%s", output_device, input_device);
+        char *buf = xemu_input_serialize_xblc_settings(xblc);
         xemu_save_peripheral_settings(player_index, 0, peripheral_type, buf);
         g_free(buf);
     }
@@ -941,40 +1024,16 @@ static void xemu_input_rebind_xblc(int port)
     const char *param = *peripheral_params_settings_map[port][0];
 
     if (peripheral_type == PERIPHERAL_XBLC) {
-
-        const char *default_device_name = "Default";
         bound_controllers[port]->peripheral_types[0] = peripheral_type;
-        bound_controllers[port]->peripherals[0] = g_malloc(sizeof(XblcState));
-        memset(bound_controllers[port]->peripherals[0], 0, sizeof(XblcState));
+        bound_controllers[port]->peripherals[0] = xemu_input_deserialize_xblc_settings(param);
+        XblcState *xblc = (XblcState*)bound_controllers[port]->peripherals[0];
 
-        const char *output_device = NULL;
-        const char *input_device = NULL;
         DPRINTF("XLBC Parameter: %s\n", param);
-        if(param != NULL) {
-            char *delimiterPtr = strchr(param, '|');
-            if(delimiterPtr != NULL) {
-                output_device = g_strndup(param, delimiterPtr - param);
-                input_device = g_strdup(delimiterPtr+1);
 
-                DPRINTF("Parsed %s into %s and %s", param, output_device, input_device);
-            } else {
-                DPRINTF("Delimiter not found in %s", param);
-            }
-        } else {
-            DPRINTF("Param is NULL");
-        }
+        char *output_temp = xblc->output_device_name == NULL ? NULL : g_strdup(xblc->output_device_name);
+        char *input_temp = xblc->input_device_name == NULL ? NULL : g_strdup(xblc->input_device_name);
 
-        if(strcmp(output_device, default_device_name) == 0) {
-            g_free((void*)output_device);
-            output_device = NULL;
-        }
-
-        if(strcmp(input_device, default_device_name) == 0) {
-            g_free((void*)input_device);
-            input_device = NULL;
-        }
-
-        bool did_bind = xemu_input_bind_xblc(port, output_device, input_device, true);
+        bool did_bind = xemu_input_bind_xblc(port, output_temp, input_temp, true);
         if (did_bind) {
             char *buf =
                 g_strdup_printf("Connected Xbox Live Communicator Headset to Player %d Expansion Slot A",
@@ -983,14 +1042,10 @@ static void xemu_input_rebind_xblc(int port)
             g_free(buf);
         }
 
-        if(input_device != NULL) {
-            DPRINTF("Freeing output_device");
-            g_free((void*)input_device);
-        }
-        if(output_device != NULL) {
-            DPRINTF("Freeing input_device");
-            g_free((void*)output_device);
-        }
+        if(output_temp != NULL)
+            g_free(output_temp);
+        if(input_temp != NULL)
+            g_free(input_temp);
     }
 }
 

@@ -485,9 +485,9 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
     const char *selected_device = (is_capture == 0) ? xblc->output_device_name : xblc->input_device_name;
     if(selected_device == NULL)
         selected_device = default_device_name;
-    const char *label_text = (is_capture == 0) ? "Speaker" : "Microphone";
+
     const char *combo_label = (is_capture == 0) ? "###Speaker" : "###Microphone";
-    ImGui::Text("%s", label_text);
+    // ImGui::Text("%s", label_text);
     ImGui::SetNextItemWidth(max_width);
     if(ImGui::BeginCombo(combo_label, selected_device, ImGuiComboFlags_NoArrowButton)) {
 
@@ -505,20 +505,20 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
                 is_selected = strcmp(device_name, selected_device) == 0;
 
             if(ImGui::Selectable(device_name, is_selected)) {
-                if(is_capture) {
-                    // Free existing input_device_name, if it's not NULL
-                    if(xblc->input_device_name != NULL)
-                        g_free((void*)xblc->input_device_name);
-
-                    // If device_index is -1, set it to NULL
-                    xblc->input_device_name = (device_index == -1) ? NULL : g_strdup(device_name);
-                } else {
+                if(is_capture == 0) {
                     // Free existing output_device_name, if it's not NULL
                     if(xblc->output_device_name != NULL)
                         g_free((void*)xblc->output_device_name);
 
                     // If device_index is -1, set it to NULL
                     xblc->output_device_name = (device_index == -1) ? NULL : g_strdup(device_name);
+                } else {
+                    // Free existing input_device_name, if it's not NULL
+                    if(xblc->input_device_name != NULL)
+                        g_free((void*)xblc->input_device_name);
+
+                    // If device_index is -1, set it to NULL
+                    xblc->input_device_name = (device_index == -1) ? NULL : g_strdup(device_name);
                 }
 
                 // If the usb-xblc device is already bound, reinitialize it
@@ -526,13 +526,8 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
                     xblc_audio_stream_reinit(xblc->dev);
                 
                 // Save the changes
-                const char *output_device_label = xblc->output_device_name == NULL ?
-                    default_device_name : xblc->output_device_name;
-                const char *input_device_label = xblc->input_device_name == NULL ?
-                    default_device_name : xblc->input_device_name;
-
-                char *buf = g_strdup_printf("%s|%s", input_device_label, output_device_label);
-                xemu_save_peripheral_settings(active, 0, bound_state->peripheral_types[0], buf);
+                char *buf = xemu_input_serialize_xblc_settings(xblc);
+                xemu_save_peripheral_settings(active, 0, PERIPHERAL_XBLC, buf);
                 g_free(buf);
             }
 
@@ -549,18 +544,35 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
 static void DrawVolumeControlSlider(int active, XblcState *xblc, int is_capture)
 {
     float max_width = ImGui::GetColumnWidth() - (10 * g_viewport_mgr.m_scale);
-    float volume = (100.0f / 128.0f) * ((is_capture == 0) ? 
-                    xblc_audio_stream_get_output_volume(xblc->dev) :
-                    xblc_audio_stream_get_input_volume(xblc->dev));
-    const char *label = (is_capture == 0) ? "Microphone" : "Speaker";
+    xblc->input_device_volume = xblc_audio_stream_get_input_volume(xblc->dev) / 256.0f;
+    xblc->output_device_volume = xblc_audio_stream_get_output_volume(xblc->dev) / 256.0f;
+    float *ui_volume = (is_capture == 0) ? &xblc->output_device_volume : &xblc->input_device_volume;
+    float original_volume = *ui_volume;
+    const char *label = (is_capture == 0) ? "Speaker" : "Microphone";
+    char description[32];
+    sprintf(description, "Volume: %.2f%%", 200 * original_volume);
+
+    // This is not respected. Not sure why
     ImGui::SetNextItemWidth(max_width);
-    if(ImGui::SliderFloat(label, &volume, 0, 200, "%.2f%%", ImGuiSliderFlags_AlwaysClamp)) {
-        int adjusted_volume = (int)(volume * 128 / 100);
+
+    // Render the slider
+    ImGui::PushID(label);
+    Slider(label, ui_volume, description);
+    ImGui::PopID();
+
+    // If the slider value has changed, update the backend value
+    if(*ui_volume != original_volume) {
+        int adjusted_volume = (int)(*ui_volume * 256);
         if(is_capture == 0) {
             xblc_audio_stream_set_output_volume(xblc->dev, adjusted_volume);
         } else {
             xblc_audio_stream_set_input_volume(xblc->dev, adjusted_volume);
         }
+
+        // Save the changes
+        char *buf = xemu_input_serialize_xblc_settings(xblc);
+        xemu_save_peripheral_settings(active, 0, PERIPHERAL_XBLC, buf);
+        g_free(buf);
     }
 }
 
@@ -609,11 +621,12 @@ void MainMenuInputView::DrawXblcSettings(int active, int expansion_slot_index)
 
     xblc_fbo->Restore();
 
-    DrawAudioDeviceSelectComboBox(active, xblc, 0);
     DrawVolumeControlSlider(active, xblc, 0);
-    DrawAudioDeviceSelectComboBox(active, xblc, 1);
+    DrawAudioDeviceSelectComboBox(active, xblc, 0);
     DrawVolumeControlSlider(active, xblc, 1);
+    DrawAudioDeviceSelectComboBox(active, xblc, 1);
 }
+    
 
 void MainMenuDisplayView::Draw()
 {

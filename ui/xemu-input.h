@@ -76,6 +76,8 @@ typedef struct XmuState {
 typedef struct XblcState {
     const char *output_device_name;
     const char *input_device_name;
+    float input_device_volume;
+    float output_device_volume;
     void *dev;
 } XblcState;
 
@@ -135,6 +137,8 @@ bool xemu_input_bind_xblc(int player_index, const char *output_device,
 void xemu_input_unbind_peripheral(int player_index, int expansion_slot_index);
 void xemu_input_rebind_peripherals(int port);
 int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);
+char *xemu_input_serialize_xblc_settings(XblcState *xblc);
+XblcState *xemu_input_deserialize_xblc_settings(const char *param);
 void xemu_save_peripheral_settings(int player_index, int peripheral_index,
                                    int peripheral_type,
                                    const char *peripheral_parameter);
