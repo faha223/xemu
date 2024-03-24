@@ -351,6 +351,9 @@ void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_
                     case PERIPHERAL_XBLC:
                         bound_state->peripherals[expansion_slot_index] = g_malloc(sizeof(XblcState));
                         memset(bound_state->peripherals[expansion_slot_index], 0, sizeof(XblcState));
+                        XblcState *xblc = (XblcState*)bound_state->peripherals[expansion_slot_index];
+                        xblc->output_device_volume = 0.5;
+                        xblc->input_device_volume = 0.5;
                         if(xemu_input_bind_xblc(active, NULL, NULL, false)) {
                             char *buf = g_strdup_printf(
                                 "Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c.", 
