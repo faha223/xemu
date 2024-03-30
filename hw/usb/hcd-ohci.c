@@ -627,7 +627,7 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
         if (OHCI_CC_DATAOVERRUN == OHCI_BM(iso_td.flags, TD_CC)) {
             /* avoid infinite loop */
             DPRINTF("OHCI: OHCI_CC_DATAOVERRUN\n");
-            assert(false);
+            //assert(false);
             return 1;
         }
         OHCI_SET_BM(iso_td.flags, TD_CC, OHCI_CC_DATAOVERRUN);
