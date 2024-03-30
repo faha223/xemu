@@ -38,6 +38,13 @@
 #include "trace.h"
 #include "hcd-ohci.h"
 
+#define DEBUG_OHCI
+#ifdef DEBUG_OHCI
+#define DPRINTF printf
+#else
+#define DPRINTF(...)
+#endif
+
 /* This causes frames to occur 1000x slower */
 //#define OHCI_TIME_WARP 1
 
@@ -227,7 +234,7 @@ struct ohci_iso_td {
 #define OHCI_CC_STALL               0x4
 #define OHCI_CC_DEVICENOTRESPONDING 0x5
 #define OHCI_CC_PIDCHECKFAILURE     0x6
-#define OHCI_CC_UNDEXPETEDPID       0x7
+#define OHCI_CC_UNDEXPECTEDPID      0x7
 #define OHCI_CC_DATAOVERRUN         0x8
 #define OHCI_CC_DATAUNDERRUN        0x9
 #define OHCI_CC_BUFFEROVERRUN       0xc
@@ -278,6 +285,7 @@ static USBDevice *ohci_find_device(OHCIState *ohci, uint8_t addr)
 
 void ohci_stop_endpoints(OHCIState *ohci)
 {
+    DPRINTF("OHCI: frame %d, Stopping Endpoints\n", ohci->frame_number);
     USBDevice *dev;
     int i, j;
 
@@ -302,6 +310,7 @@ static void ohci_roothub_reset(OHCIState *ohci)
     OHCIPort *port;
     int i;
 
+    DPRINTF("OHCI: Root Hub Reset\n");
     ohci_bus_stop(ohci);
     ohci->rhdesc_a = OHCI_RHA_NPS | ohci->num_ports;
     ohci->rhdesc_b = 0x0; /* Impl. specific */
@@ -320,6 +329,7 @@ static void ohci_roothub_reset(OHCIState *ohci)
 /* Reset the controller */
 static void ohci_soft_reset(OHCIState *ohci)
 {
+    DPRINTF("OHCI: Soft Reset\n");
     trace_usb_ohci_reset(ohci->name);
 
     ohci_bus_stop(ohci);
@@ -343,6 +353,7 @@ static void ohci_soft_reset(OHCIState *ohci)
     ohci->fi = 0x2edf;
     ohci->fit = 0;
     ohci->frt = 0;
+    DPRINTF("OHCI: Setting frame_number to 0\n");
     ohci->frame_number = 0;
     ohci->pstart = 0;
     ohci->lst = OHCI_LS_THRESH;
@@ -350,6 +361,7 @@ static void ohci_soft_reset(OHCIState *ohci)
 
 void ohci_hard_reset(OHCIState *ohci)
 {
+    DPRINTF("OHCI: Hard Reset\n");
     ohci_soft_reset(ohci);
     ohci->ctl = 0;
     ohci_roothub_reset(ohci);
@@ -551,7 +563,7 @@ static int ohci_copy_iso_td(OHCIState *ohci,
 static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
 {
     int dir;
-    size_t len = 0;
+    size_t len = 0, len_2 = 0;
     const char *str = NULL;
     int pid;
     int ret;
@@ -565,18 +577,22 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
     uint32_t addr;
     uint16_t starting_frame;
     int16_t relative_frame_number;
+    bool split_buffer = false;
     int frame_count;
     uint32_t start_offset, next_offset, end_offset = 0;
-    uint32_t start_addr, end_addr;
+    uint32_t start_page, end_page;
+    uint32_t start_addr, end_addr, start_addr_2, end_addr_2;
 
     addr = ed->head & OHCI_DPTR_MASK;
 
     if (addr == 0) {
+        DPRINTF("OHCI: addr == 0\n");
         ohci_die(ohci);
         return 1;
     }
 
     if (ohci_read_iso_td(ohci, addr, &iso_td)) {
+        DPRINTF("OHCI: ISO TD Read Failed\n");
         trace_usb_ohci_iso_td_read_failed(addr);
         ohci_die(ohci);
         return 1;
@@ -584,7 +600,7 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
 
     starting_frame = OHCI_BM(iso_td.flags, TD_SF);
     frame_count = OHCI_BM(iso_td.flags, TD_FC);
-    relative_frame_number = USUB(ohci->frame_number, starting_frame); 
+    relative_frame_number = USUB(ohci->frame_number, starting_frame);
 
     trace_usb_ohci_iso_td_head(
            ed->head & OHCI_DPTR_MASK, ed->tail & OHCI_DPTR_MASK,
@@ -598,15 +614,20 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
            iso_td.offset[6], iso_td.offset[7]);
 
     if (relative_frame_number < 0) {
+        DPRINTF("OHCI: relative_frame_number < 0\n");
         trace_usb_ohci_iso_td_relative_frame_number_neg(relative_frame_number);
         return 1;
     } else if (relative_frame_number > frame_count) {
         /* ISO TD expired - retire the TD to the Done Queue and continue with
            the next ISO TD of the same ED */
+        DPRINTF("OHCI: frame %d, starting_frame: %d\n", ohci->frame_number, starting_frame);
+        DPRINTF("OHCI: Bad Relative Frame Number: %d:%d\n", relative_frame_number, frame_count);
         trace_usb_ohci_iso_td_relative_frame_number_big(relative_frame_number,
                                                         frame_count);
         if (OHCI_CC_DATAOVERRUN == OHCI_BM(iso_td.flags, TD_CC)) {
             /* avoid infinite loop */
+            DPRINTF("OHCI: OHCI_CC_DATAOVERRUN\n");
+            assert(false);
             return 1;
         }
         OHCI_SET_BM(iso_td.flags, TD_CC, OHCI_CC_DATAOVERRUN);
@@ -618,6 +639,7 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
         if (i < ohci->done_count)
             ohci->done_count = i;
         if (ohci_put_iso_td(ohci, addr, &iso_td)) {
+            DPRINTF("OHCI: Failed to put iso td\n");
             ohci_die(ohci);
             return 1;
         }
@@ -639,11 +661,13 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
         pid = USB_TOKEN_SETUP;
         break;
     default:
+        DPRINTF("OHCI: Bad Direction\n");
         trace_usb_ohci_iso_td_bad_direction(dir);
         return 1;
     }
 
     if (!iso_td.bp || !iso_td.be) {
+        DPRINTF("OHCI: Bad BP|BE\n");
         trace_usb_ohci_iso_td_bad_bp_be(iso_td.bp, iso_td.be);
         return 1;
     }
@@ -658,11 +682,13 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
     if (!(OHCI_BM(start_offset, TD_PSW_CC) & 0xe) || 
         ((relative_frame_number < frame_count) && 
          !(OHCI_BM(next_offset, TD_PSW_CC) & 0xe))) {
+        DPRINTF("Not Accessed\n");
         trace_usb_ohci_iso_td_bad_cc_not_accessed(start_offset, next_offset);
         return 1;
     }
 
     if ((relative_frame_number < frame_count) && (start_offset > next_offset)) {
+        DPRINTF("start_offset > next_offset\n");
         trace_usb_ohci_iso_td_bad_cc_overrun(start_offset, next_offset);
         return 1;
     }
@@ -689,32 +715,64 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
         end_addr = next_offset;
     }
 
+    /* check if the buffer is split between two pages */
+    start_page = start_addr & OHCI_PAGE_MASK;
+    end_page = end_addr & OHCI_PAGE_MASK;
+
+    if(start_page == end_page) {
+        /* buffer starts and ends in a single page */
+    } else if(start_page + 0x1000 == end_page) {
+        /* buffer crosses a 4K page boundary but is otherwise contiguous */
+    } else {
+        /* packet is split between two non-contiguous pages. It will require two transfers */
+        split_buffer = true;
+        end_addr_2 = end_addr;
+        start_addr_2 = end_page;
+        end_addr = start_addr | 0xfff;
+    }
+
     if (start_addr > end_addr) {
+        /* it should no longer be possible to reach this spot */
+        assert(false);
         trace_usb_ohci_iso_td_bad_cc_overrun(start_addr, end_addr);
         return 1;
     }
 
-    if ((start_addr & OHCI_PAGE_MASK) != (end_addr & OHCI_PAGE_MASK)) {
-        len = (end_addr & OHCI_OFFSET_MASK) + 0x1001
-            - (start_addr & OHCI_OFFSET_MASK);
-    } else {
-        len = end_addr - start_addr + 1;
-    }
+    len = end_addr - start_addr + 1;
     if (len > sizeof(buf)) {
         len = sizeof(buf);
+    }
+
+    if(split_buffer) {
+        len_2 = end_addr_2 - start_addr_2 + 1;
+        if(len + len_2 > sizeof(buf))
+            len_2 = sizeof(buf) - len;
+    } else {
+        len_2 = 0;
     }
 
     if (len && dir != OHCI_TD_DIR_IN) {
         if (ohci_copy_iso_td(ohci, start_addr, end_addr, buf, len,
                              DMA_DIRECTION_TO_DEVICE)) {
+            DPRINTF("OHCI: Failed to copy iso td\n");
             ohci_die(ohci);
             return 1;
+        }
+
+        if (len_2) {
+            if (ohci_copy_iso_td(ohci, start_addr_2, end_addr_2, &buf[len], len_2,
+                                 DMA_DIRECTION_TO_DEVICE)) {
+                DPRINTF("OHCI: Failed to copy iso td\n");
+                ohci_die(ohci);
+                return 1;
+            }   
         }
     }
 
     dev = ohci_find_device(ohci, OHCI_BM(ed->flags, ED_FA));
     if (dev == NULL) {
         trace_usb_ohci_td_dev_error();
+        DPRINTF("OHCI: Failed to find device\n");
         return 1;
     }
     ep = usb_ep_get(dev, pid, OHCI_BM(ed->flags, ED_EN));
@@ -723,9 +781,10 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
     int_req = relative_frame_number == frame_count &&
               OHCI_BM(iso_td.flags, TD_DI) == 0;
     usb_packet_setup(pkt, pid, ep, 0, addr, false, int_req);
-    usb_packet_addbuf(pkt, buf, len);
+    usb_packet_addbuf(pkt, buf, len + len_2);
     usb_handle_packet(dev, pkt);
     if (pkt->status == USB_RET_ASYNC) {
+        DPRINTF("OHCI: USB_RET_ASYNC\n");
         usb_device_flush_ep_queue(dev, ep);
         g_free(pkt);
         return 1;
@@ -741,36 +800,49 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
                              str, len, ret);
 
     /* Writeback */
-    if (dir == OHCI_TD_DIR_IN && ret >= 0 && ret <= len) {
+    if (dir == OHCI_TD_DIR_IN && ret >= 0 && ret <= len + len_2) {
         /* IN transfer succeeded */
-        if (ohci_copy_iso_td(ohci, start_addr, end_addr, buf, ret,
+        if (ohci_copy_iso_td(ohci, start_addr, end_addr, buf, MIN(ret, len),
                              DMA_DIRECTION_FROM_DEVICE)) {
+            DPRINTF("OHCI: Failed to copy iso td\n");
             ohci_die(ohci);
             return 1;
+        }
+        if(len_2) {
+            if (ohci_copy_iso_td(ohci, start_addr_2, end_addr_2, &buf[len], 
+                                 MIN(len_2, ret - len),
+                                 DMA_DIRECTION_FROM_DEVICE)) {
+                DPRINTF("OHCI: Failed to copy iso td\n");
+                ohci_die(ohci);
+                return 1;
+            }   
         }
         OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_CC,
                     OHCI_CC_NOERROR);
         OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_SIZE, ret);
-    } else if (dir == OHCI_TD_DIR_OUT && ret == len) {
+    } else if (dir == OHCI_TD_DIR_OUT && ret == len + len_2) {
         /* OUT transfer succeeded */
         OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_CC,
                     OHCI_CC_NOERROR);
         OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_SIZE, 0);
     } else {
-        if (ret > (ssize_t) len) {
-            trace_usb_ohci_iso_td_data_overrun(ret, len);
+        if (ret > (ssize_t) (len + len_2)) {
+            trace_usb_ohci_iso_td_data_overrun(ret, len + len_2);
+            DPRINTF("ret > len + len_2: Data Overrun\n");
             OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_CC,
                         OHCI_CC_DATAOVERRUN);
             OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_SIZE,
-                        len);
+                        len + len_2);
         } else if (ret >= 0) {
             trace_usb_ohci_iso_td_data_underrun(ret);
+            DPRINTF("ret >= 0: Data Underrun\n");
             OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_CC,
                         OHCI_CC_DATAUNDERRUN);
         } else {
             switch (ret) {
             case USB_RET_IOERROR:
             case USB_RET_NODEV:
+                DPRINTF("Device Not Responding\n");
                 OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_CC,
                             OHCI_CC_DEVICENOTRESPONDING);
                 OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_SIZE,
@@ -778,6 +850,7 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
                 break;
             case USB_RET_NAK:
             case USB_RET_STALL:
+                DPRINTF("NAK\n");
                 trace_usb_ohci_iso_td_nak(ret);
                 OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_CC,
                             OHCI_CC_STALL);
@@ -785,9 +858,10 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
                             0);
                 break;
             default:
+                DPRINTF("Bad Response: 0x%08x\n", ret);
                 trace_usb_ohci_iso_td_bad_response(ret);
                 OHCI_SET_BM(iso_td.offset[relative_frame_number], TD_PSW_CC,
-                            OHCI_CC_UNDEXPETEDPID);
+                            OHCI_CC_UNDEXPECTEDPID);
                 break;
             }
         }
@@ -805,6 +879,7 @@ static int ohci_service_iso_td(OHCIState *ohci, struct ohci_ed *ed)
             ohci->done_count = i;
     }
     if (ohci_put_iso_td(ohci, addr, &iso_td)) {
+        DPRINTF("OHCI: Failed to put iso td\n");
         ohci_die(ohci);
     }
     return 1;
@@ -1046,7 +1121,7 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
                 break;
             default:
                 trace_usb_ohci_td_bad_device_response(ret);
-                OHCI_SET_BM(td.flags, TD_CC, OHCI_CC_UNDEXPETEDPID);
+                OHCI_SET_BM(td.flags, TD_CC, OHCI_CC_UNDEXPECTEDPID);
                 OHCI_SET_BM(td.flags, TD_EC, 3);
                 break;
             }
@@ -1090,6 +1165,7 @@ static int ohci_service_ed_list(OHCIState *ohci, uint32_t head)
 
     for (cur = head; cur && link_cnt++ < ED_LINK_LIMIT; cur = next_ed) {
         if (ohci_read_ed(ohci, cur, &ed)) {
+            DPRINTF("OHCI: frame %d, Endpoint Read Error\n", ohci->frame_number);
             trace_usb_ohci_ed_read_error(cur);
             ohci_die(ohci);
             return 0;
@@ -1100,6 +1176,7 @@ static int ohci_service_ed_list(OHCIState *ohci, uint32_t head)
         if ((ed.head & OHCI_ED_H) || (ed.flags & OHCI_ED_K)) {
             uint32_t addr;
             /* Cancel pending packets for ED that have been paused.  */
+            DPRINTF("OHCI: frame %d, Paused, Cancelling Pending Packets\n", ohci->frame_number);
             addr = ed.head & OHCI_DPTR_MASK;
             if (ohci->async_td && addr == ohci->async_td) {
                 usb_cancel_packet(&ohci->usb_packet);
@@ -1127,13 +1204,13 @@ static int ohci_service_ed_list(OHCIState *ohci, uint32_t head)
                     break;
             } else {
                 /* Handle isochronous endpoints */
-                if (ohci_service_iso_td(ohci, &ed)) {
+                if (ohci_service_iso_td(ohci, &ed))
                     break;
-                }
             }
         }
 
         if (ohci_put_ed(ohci, cur, &ed)) {
+            DPRINTF("OHCI: frame %d, Failed to put ED\n", ohci->frame_number);
             ohci_die(ohci);
             return 0;
         }
@@ -1182,7 +1259,9 @@ static void ohci_frame_boundary(void *opaque)
     OHCIState *ohci = opaque;
     struct ohci_hcca hcca;
 
-    if (ohci_read_hcca(ohci, ohci->hcca, &hcca)) {
+    int hcca_read_result = ohci_read_hcca(ohci, ohci->hcca, &hcca);
+    if(hcca_read_result) {
+        DPRINTF("OHCI: HCCA Read Error: %d\n", hcca_read_result);
         trace_usb_ohci_hcca_read_error(ohci->hcca);
         ohci_die(ohci);
         return;
@@ -1194,6 +1273,8 @@ static void ohci_frame_boundary(void *opaque)
 
         n = ohci->frame_number & 0x1f;
         ohci_service_ed_list(ohci, le32_to_cpu(hcca.intr[n]));
+    } else {
+        DPRINTF("OHCI: frame %d, Not servicing ED List\n", ohci->frame_number);
     }
 
     /* Cancel all pending packets if either of the lists has been disabled.  */
@@ -1205,6 +1286,7 @@ static void ohci_frame_boundary(void *opaque)
 
     /* Stop if UnrecoverableError happened or ohci_sof will crash */
     if (ohci->intr_status & OHCI_INTR_UE) {
+        DPRINTF("OHCI: Unrecoverable Error\n");
         return;
     }
 
@@ -1245,6 +1327,8 @@ static void ohci_frame_boundary(void *opaque)
  */
 static int ohci_bus_start(OHCIState *ohci)
 {
+    
+    DPRINTF("OHCI: Bus Start\n");
     trace_usb_ohci_start(ohci->name);
 
     /* Delay the first SOF event by one frame time as
@@ -1261,6 +1345,7 @@ static int ohci_bus_start(OHCIState *ohci)
 /* Stop sending SOF tokens on the bus */
 void ohci_bus_stop(OHCIState *ohci)
 {
+    DPRINTF("OHCI: Bus Stop\n");
     trace_usb_ohci_stop(ohci->name);
     timer_del(ohci->eof_timer);
 }
@@ -1300,6 +1385,7 @@ static int ohci_port_set_if_connected(OHCIState *ohci, int i, uint32_t val)
 /* Set the frame interval - frame interval toggle is manipulated by the hcd only */
 static void ohci_set_frame_interval(OHCIState *ohci, uint16_t val)
 {
+    DPRINTF("OHCI: OHCI Set Frame Interval\n");
     val &= OHCI_FMI_FI;
 
     if (val != ohci->fi) {
@@ -1334,6 +1420,8 @@ static void ohci_set_ctl(OHCIState *ohci, uint32_t val)
     /* no state change */
     if (old_state == new_state)
         return;
+
+    DPRINTF("OHCI: Setting Ctl to 0x%02x\n", new_state);
 
     trace_usb_ohci_set_ctl(ohci->name, new_state);
     switch (new_state) {
@@ -1786,6 +1874,7 @@ static void ohci_detach(USBPort *port1)
 
 static void ohci_wakeup(USBPort *port1)
 {
+    DPRINTF("OHCI: Wakeup\n");
     OHCIState *s = port1->opaque;
     OHCIPort *port = &s->rhport[port1->index];
     uint32_t intr = 0;
@@ -1835,6 +1924,7 @@ void usb_ohci_init(OHCIState *ohci, DeviceState *dev, uint32_t num_ports,
                    uint32_t firstport, AddressSpace *as,
                    void (*ohci_die_fn)(struct OHCIState *), Error **errp)
 {
+    DPRINTF("OHCI: Init\n");
     Error *err = NULL;
     int i;
 
@@ -1904,6 +1994,7 @@ void usb_ohci_init(OHCIState *ohci, DeviceState *dev, uint32_t num_ports,
  */
 void ohci_sysbus_die(struct OHCIState *ohci)
 {
+    DPRINTF("OHCI: Sysbus Die\n");
     trace_usb_ohci_die();
 
     ohci_set_interrupt(ohci, OHCI_INTR_UE);
@@ -1929,6 +2020,7 @@ static void ohci_realize_pxa(DeviceState *dev, Error **errp)
 
 static void usb_ohci_reset_sysbus(DeviceState *dev)
 {
+    DPRINTF("OHCI: Reset Sysbus\n");
     OHCISysBusState *s = SYSBUS_OHCI(dev);
     OHCIState *ohci = &s->ohci;
 
