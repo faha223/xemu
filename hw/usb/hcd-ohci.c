@@ -38,7 +38,7 @@
 #include "trace.h"
 #include "hcd-ohci.h"
 
-#define DEBUG_OHCI
+// #define DEBUG_OHCI
 #ifdef DEBUG_OHCI
 #define DPRINTF printf
 #else
