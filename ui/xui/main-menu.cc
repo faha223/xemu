@@ -318,6 +318,7 @@ void MainMenuInputView::Draw()
 
                     bound_state = iter;
                 }
+				ImGui::PopID();
             }
         }
         ImGui::EndCombo();
