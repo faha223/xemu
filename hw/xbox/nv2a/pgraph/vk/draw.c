@@ -500,7 +500,7 @@ static void create_clear_pipeline(PGRAPHState *pg)
         .depthClampEnable = VK_FALSE,
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL,
-        .lineWidth = 1.0f,
+        .lineWidth = (float)pg->surface_scale_factor,
         .cullMode = VK_CULL_MODE_BACK_BIT,
         .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = VK_FALSE,
@@ -822,7 +822,7 @@ static void create_pipeline(PGRAPHState *pg)
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = pgraph_polygon_mode_vk_map[r->shader_binding->state
                                                       .polygon_front_mode],
-        .lineWidth = 1.0f,
+        .lineWidth = (float)pg->surface_scale_factor,
         .frontFace = (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                       NV_PGRAPH_SETUPRASTER_FRONTFACE) ?
                          VK_FRONT_FACE_COUNTER_CLOCKWISE :
@@ -952,7 +952,8 @@ static void create_pipeline(PGRAPHState *pg)
     };
 
     VkDynamicState dynamic_states[2] = { VK_DYNAMIC_STATE_VIEWPORT,
-                                         VK_DYNAMIC_STATE_SCISSOR };
+                                         VK_DYNAMIC_STATE_SCISSOR,
+                                         VK_DYNAMIC_STATE_LINE_WIDTH };
 
     VkPipelineDynamicStateCreateInfo dynamic_state = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,

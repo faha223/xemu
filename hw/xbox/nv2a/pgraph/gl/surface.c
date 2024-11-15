@@ -74,8 +74,9 @@ unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d)
 
 void pgraph_gl_reload_surface_scale_factor(PGRAPHState *pg)
 {
-    int factor = g_config.display.quality.surface_scale;
-    pg->surface_scale_factor = factor < 1 ? 1 : factor;
+    int factor = MAX(1, g_config.display.quality.surface_scale);
+    pg->surface_scale_factor = factor;
+    glLineWidth(factor);
 }
 
 // FIXME: Move to common

@@ -199,7 +199,7 @@ TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx)
     uint32_t ctl_1 = pgraph_reg_r(pg, NV_PGRAPH_TEXCTL1_0 + i*4);
     uint32_t fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i*4);
 
-#if DEBUG_NV2A
+#ifdef DEBUG_NV2A
     uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i*4);
     uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i*4);
 #endif
