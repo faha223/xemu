@@ -275,7 +275,7 @@ void MainMenuInputView::Draw()
     ImGui::PopFont();
     ImGui::SetCursorPos(pos);
 
-    if (bound_state) 
+    if (bound_state)
         DrawExpansionSlotOptions(active);
 
     SectionTitle("Options");
@@ -633,7 +633,15 @@ void MainMenuInputView::DrawXblcSettings(int active, int expansion_slot_index)
 
 void MainMenuDisplayView::Draw()
 {
-    SectionTitle("Quality");
+    SectionTitle("Renderer");
+    ChevronCombo("Backend", &g_config.display.renderer,
+                 "Null\0"
+                 "OpenGL\0"
+#ifdef CONFIG_VULKAN
+                 "Vulkan\0"
+#endif
+                 ,
+                 "Select desired renderer implementation");
     int rendering_scale = nv2a_get_surface_scale_factor() - 1;
     if (ChevronCombo("Internal resolution scale", &rendering_scale,
                      "1x\0"
@@ -1275,11 +1283,11 @@ void MainMenuSnapshotsView::Draw()
         XemuSnapshotData *data = &g_snapshot_mgr.m_extra_data[i];
 
         int current_snapshot_binding = -1;
-        for (int i = 0; i < 4; ++i) {
-            if (g_strcmp0(*(g_snapshot_shortcut_index_key_map[i]),
+        for (int j = 0; j < 4; ++j) {
+            if (g_strcmp0(*(g_snapshot_shortcut_index_key_map[j]),
                           snapshot->name) == 0) {
                 assert(current_snapshot_binding == -1);
-                current_snapshot_binding = i;
+                current_snapshot_binding = j;
             }
         }
 
