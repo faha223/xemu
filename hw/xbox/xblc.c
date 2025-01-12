@@ -220,7 +220,7 @@ static void output_callback(void *userdata, uint8_t *stream, int len)
     } else {
         while (len > 0 && !fifo8_is_empty(&s->out.fifo)) {
             max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)len);
-            data = fifo8_pop_buf(&s->out.fifo, max_len, &max_len);
+            data = fifo8_pop_bufptr(&s->out.fifo, max_len, &max_len);
 
             if(s->out.volume > SDL_MIX_MAXVOLUME) {
                 memcpy(stream, data, max_len);
@@ -450,7 +450,7 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 
         // fifo may not give us a contiguous packet, so may need multiple calls
         while (to_process) {
-            const uint8_t *packet = fifo8_pop_buf(&s->in.fifo, to_process, &chunk_len);
+            const uint8_t *packet = fifo8_pop_bufptr(&s->in.fifo, to_process, &chunk_len);
             usb_packet_copy(p, (void *)packet, chunk_len);
             to_process -= chunk_len;
         }
