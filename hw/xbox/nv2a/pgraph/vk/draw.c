@@ -2060,7 +2060,17 @@ void pgraph_vk_flush_draw(NV2AState *d)
 
     r->num_vertex_ram_buffer_syncs = 0;
 
+    bool isLineLoop = r->shader_binding != NULL &&
+                      r->shader_binding->state.primitive_mode == PRIM_TYPE_LINE_LOOP;
+    if (isLineLoop) {
+        fprintf(stderr, "draw.c (2064): Drawing Line Loop\n");
+    }
+
     if (pg->draw_arrays_length) {
+        if (isLineLoop) {
+            fprintf(stderr, "draw.c (2070): Drawing Line Loop as Arrays\n");
+        }
+
         NV2A_VK_DGROUP_BEGIN("Draw Arrays");
         nv2a_profile_inc_counter(NV2A_PROF_DRAW_ARRAYS);
 
@@ -2097,6 +2107,10 @@ void pgraph_vk_flush_draw(NV2AState *d)
 
         NV2A_VK_DGROUP_END();
     } else if (pg->inline_elements_length) {
+        if (isLineLoop) {
+            fprintf(stderr, "draw.c (2110): Drawing Line Loop as Inline Elements\n");
+        }
+        
         NV2A_VK_DGROUP_BEGIN("Inline Elements");
         assert(pg->inline_buffer_length == 0);
         assert(pg->inline_array_length == 0);
@@ -2138,11 +2152,16 @@ void pgraph_vk_flush_draw(NV2AState *d)
 
         NV2A_VK_DGROUP_END();
     } else if (pg->inline_buffer_length) {
+        if (isLineLoop) {
+            fprintf(stderr, "draw.c (2155): Drawing Line Loop as Inline Buffer\n");
+        }
+        
         NV2A_VK_DGROUP_BEGIN("Inline Buffer");
         nv2a_profile_inc_counter(NV2A_PROF_INLINE_BUFFERS);
         assert(pg->inline_array_length == 0);
 
-        size_t vertex_data_size = pg->inline_buffer_length * sizeof(float) * 4;
+        uint32_t inline_buffer_length = pg->inline_buffer_length + (isLineLoop ? 1 : 0);
+        size_t vertex_data_size = inline_buffer_length * sizeof(float) * 4;
         void *data[NV2A_VERTEXSHADER_ATTRIBUTES];
         size_t sizes[NV2A_VERTEXSHADER_ATTRIBUTES];
         size_t offset = 0;
@@ -2154,12 +2173,22 @@ void pgraph_vk_flush_draw(NV2AState *d)
             VertexAttribute *attr = &pg->vertex_attributes[attr_index];
             r->vertex_attribute_offsets[attr_index] = offset;
 
-            data[i] = attr->inline_buffer;
+            if(isLineLoop) {
+                data[i] = malloc(vertex_data_size);
+                uint32_t original_buffer_length = (pg->inline_buffer_length * sizeof(float) * 4);
+                memcpy(data[i], attr->inline_buffer, original_buffer_length);
+                memcpy(data[i] + original_buffer_length, attr->inline_buffer, 4 * sizeof(float));
+            } else {
+                data[i] = attr->inline_buffer;
+            }
             sizes[i] = vertex_data_size;
 
             attr->inline_buffer_populated = false;
             offset += vertex_data_size;
         }
+        uint32_t temp = pg->inline_buffer_length;
+        pg->inline_buffer_length = inline_buffer_length;
+
         ensure_buffer_space(pg, BUFFER_VERTEX_INLINE_STAGING, offset);
 
         begin_pre_draw(pg);
@@ -2169,9 +2198,16 @@ void pgraph_vk_flush_draw(NV2AState *d)
                                      "Inline Buffer");
         begin_draw(pg);
         bind_inline_vertex_buffer(pg, buffer_offset);
-        vkCmdDraw(r->command_buffer, pg->inline_buffer_length, 1, 0, 0);
+        vkCmdDraw(r->command_buffer, inline_buffer_length, 1, 0, 0);
         end_draw(pg);
         pgraph_vk_end_debug_marker(r, r->command_buffer);
+
+        if(isLineLoop) {
+            for (int i = 0; i < r->num_active_vertex_attribute_descriptions; i++) {
+                free(data[i]);
+            }
+            pg->inline_buffer_length = temp;
+        }
 
         NV2A_VK_DGROUP_END();
     } else if (pg->inline_array_length) {
@@ -2218,6 +2254,10 @@ void pgraph_vk_flush_draw(NV2AState *d)
         pgraph_vk_end_debug_marker(r, r->command_buffer);
         NV2A_VK_DGROUP_END();
     } else {
+        if (isLineLoop) {
+            fprintf(stderr, "draw.c (2243): Skipped Drawing Line Look\n");
+        }
+                
         NV2A_VK_DPRINTF("EMPTY NV097_SET_BEGIN_END");
         NV2A_UNCONFIRMED("EMPTY NV097_SET_BEGIN_END");
     }
