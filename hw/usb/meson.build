@@ -9,6 +9,7 @@ system_ss.add(when: 'CONFIG_USB', if_true: files(
   'desc-msos.c',
   'libhw.c',
   'pcap.c',
+  'usb-passthrough.c'
 ), if_false: files('bus-stub.c'))
 
 # usb host adapters
@@ -83,7 +84,7 @@ endif
 if libusb.found()
   usbhost_ss = ss.source_set()
   usbhost_ss.add(when: ['CONFIG_USB', libusb],
-                 if_true: files('host-libusb.c', 'usb-passthrough.c'))
+                 if_true: files('host-libusb.c'))
   hw_usb_modules += {'host': usbhost_ss}
 endif
 

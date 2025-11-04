@@ -175,8 +175,10 @@ void MainMenuInputView::Draw()
         driver = DRIVER_S_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
         driver = DRIVER_STEEL_BATTALION_DISPLAY_NAME;
+#ifdef CONFIG_USB_LIBUSB
     else if(strcmp(driver, DRIVER_USB_PASSTHROUGH) == 0)
         driver = DRIVER_USB_PASSTHROUGH_DISPLAY_NAME;
+#endif
 
     ImGui::Columns(2, "", false);
     ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
@@ -192,13 +194,17 @@ void MainMenuInputView::Draw()
             DRIVER_DUKE, 
             DRIVER_S,
             DRIVER_STEEL_BATTALION,
+#ifdef CONFIG_USB_LIBUSB
             DRIVER_USB_PASSTHROUGH
+#endif
             };
         const char *driver_display_names[] = { 
             DRIVER_DUKE_DISPLAY_NAME, 
             DRIVER_S_DISPLAY_NAME, 
             DRIVER_STEEL_BATTALION_DISPLAY_NAME, 
+#ifdef CONFIG_USB_LIBUSB
             DRIVER_USB_PASSTHROUGH_DISPLAY_NAME
+#endif
             };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
