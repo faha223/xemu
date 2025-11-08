@@ -93,8 +93,7 @@ ControllerStateList available_controllers =
 ControllerState *bound_controllers[4] = { NULL, NULL, NULL, NULL };
 LibusbDevice *bound_libusb_devices[4] = { NULL, NULL, NULL, NULL };
 const char *all_drivers[4] = { DRIVER_DUKE, DRIVER_S, DRIVER_STEEL_BATTALION, DRIVER_USB_PASSTHROUGH };
-const char *bound_drivers[4] = { DRIVER_DUKE, DRIVER_DUKE, DRIVER_DUKE,
-                                 DRIVER_DUKE };
+const char *bound_drivers[4] = { DRIVER_DUKE, DRIVER_DUKE, DRIVER_DUKE, DRIVER_DUKE };
 int test_mode;
 
 static const char **port_index_to_settings_key_map[] = {
@@ -153,7 +152,9 @@ static const char *get_bound_driver(int port)
         return DRIVER_S;
     if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
         return DRIVER_STEEL_BATTALION;
-
+    if(strcmp(driver, DRIVER_USB_PASSTHROUGH) == 0)
+        return DRIVER_USB_PASSTHROUGH;
+        
     return DRIVER_DUKE;
 }
 
