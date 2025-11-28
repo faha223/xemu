@@ -779,24 +779,61 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
     if (strcmp(bound_driver, DRIVER_STEEL_BATTALION) == 0) {
         state->sbc.buttons = 0;
 
-        const uint64_t sdl_button_map_sbc[8][2] = {
-            { SDL_CONTROLLER_BUTTON_A, SBC_BUTTON_MAIN_WEAPON },
-            { SDL_CONTROLLER_BUTTON_B, SBC_BUTTON_LOCK_ON },
-            { SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SBC_BUTTON_FUNC1 },
-            { SDL_CONTROLLER_BUTTON_LEFTSTICK, SBC_BUTTON_SIGHT_CHANGE },
-            { SDL_CONTROLLER_BUTTON_DPAD_UP, SBC_BUTTON_GEAR_UP },
-            { SDL_CONTROLLER_BUTTON_DPAD_DOWN, SBC_BUTTON_GEAR_DOWN },
-            { SDL_CONTROLLER_BUTTON_DPAD_LEFT, SBC_BUTTON_TUNER_LEFT },
-            { SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SBC_BUTTON_TUNER_RIGHT }
+        const uint64_t sdl_button_map_sbc[43][2] = {
+            { g_config.input.sbc_binding_map.main_weapon, SBC_BUTTON_MAIN_WEAPON },
+            { g_config.input.sbc_binding_map.lock_on, SBC_BUTTON_LOCK_ON},
+            { g_config.input.sbc_binding_map.sub_weapon, SBC_BUTTON_SUB_WEAPON },
+            { g_config.input.sbc_binding_map.eject, SBC_BUTTON_EJECT },
+            { g_config.input.sbc_binding_map.cockpit_hatch, SBC_BUTTON_COCKPIT_HATCH },
+            { g_config.input.sbc_binding_map.ignition, SBC_BUTTON_IGNITION },
+            { g_config.input.sbc_binding_map.start, SBC_BUTTON_START },
+            { g_config.input.sbc_binding_map.open_close, SBC_BUTTON_OPEN_CLOSE },
+            { g_config.input.sbc_binding_map.map_zoom_in_out, SBC_BUTTON_MAP_ZOOM_IN_OUT },
+            { g_config.input.sbc_binding_map.mode_select, SBC_BUTTON_MODE_SELECT },
+            { g_config.input.sbc_binding_map.sub_monitor_mode_select, SBC_BUTTON_SUB_MONITOR_MODE_SELECT },
+            { g_config.input.sbc_binding_map.zoom_in, SBC_BUTTON_ZOOM_IN },
+            { g_config.input.sbc_binding_map.zoom_out, SBC_BUTTON_ZOOM_OUT },
+            { g_config.input.sbc_binding_map.fss, SBC_BUTTON_FSS },
+            { g_config.input.sbc_binding_map.manipulator, SBC_BUTTON_MANIPULATOR },
+            { g_config.input.sbc_binding_map.line_color_change, SBC_BUTTON_LINE_COLOR_CHANGE },
+            { g_config.input.sbc_binding_map.washing, SBC_BUTTON_WASHING },
+            { g_config.input.sbc_binding_map.extinguisher, SBC_BUTTON_EXTINGUISHER },
+            { g_config.input.sbc_binding_map.chaff, SBC_BUTTON_CHAFF },
+            { g_config.input.sbc_binding_map.tank_detach, SBC_BUTTON_TANK_DETACH },
+            { g_config.input.sbc_binding_map.override, SBC_BUTTON_OVERRIDE },
+            { g_config.input.sbc_binding_map.night_scope, SBC_BUTTON_NIGHT_SCOPE },
+            { g_config.input.sbc_binding_map.func1, SBC_BUTTON_FUNC1 },
+            { g_config.input.sbc_binding_map.func2, SBC_BUTTON_FUNC2 },
+            { g_config.input.sbc_binding_map.func3, SBC_BUTTON_FUNC3 },
+            { g_config.input.sbc_binding_map.main_weapon_control, SBC_BUTTON_MAIN_WEAPON_CONTROL },
+            { g_config.input.sbc_binding_map.sub_weapon_control, SBC_BUTTON_SUB_WEAPON_CONTROL },
+            { g_config.input.sbc_binding_map.magazine_change, SBC_BUTTON_MAGAZINE_CHANGE },
+            { g_config.input.sbc_binding_map.com1, SBC_BUTTON_COM1 },
+            { g_config.input.sbc_binding_map.com2, SBC_BUTTON_COM2 },
+            { g_config.input.sbc_binding_map.com3, SBC_BUTTON_COM3 },
+            { g_config.input.sbc_binding_map.com4, SBC_BUTTON_COM4 },
+            { g_config.input.sbc_binding_map.com5, SBC_BUTTON_COM5 },
+            { g_config.input.sbc_binding_map.sight_change, SBC_BUTTON_SIGHT_CHANGE },
+            { g_config.input.sbc_binding_map.filt_control_system, SBC_BUTTON_FILT_CONTROL_SYSTEM },
+            { g_config.input.sbc_binding_map.oxygen_supply_system, SBC_BUTTON_OXYGEN_SUPPLY_SYSTEM },
+            { g_config.input.sbc_binding_map.fuel_flow_rate, SBC_BUTTON_FUEL_FLOW_RATE },
+            { g_config.input.sbc_binding_map.buffer_material, SBC_BUTTON_BUFFER_MATERIAL },
+            { g_config.input.sbc_binding_map.vt_location_measurement, SBC_BUTTON_VT_LOCATION_MEASUREMENT },
+            { g_config.input.sbc_binding_map.gear_up, SBC_BUTTON_GEAR_UP },
+            { g_config.input.sbc_binding_map.gear_down, SBC_BUTTON_GEAR_DOWN },
+            { g_config.input.sbc_binding_map.tuner_left, SBC_BUTTON_TUNER_LEFT },
+            { g_config.input.sbc_binding_map.tuner_right, SBC_BUTTON_TUNER_RIGHT }
         };
 
         if (state->sbc.gearLever == 0)
             state->sbc.gearLever = 255;
 
-        for (int i = 0; i < 8; i++) {
-            if (SDL_GameControllerGetButton(state->sdl_gamecontroller,
-                                            sdl_button_map_sbc[i][0]))
-                state->sbc.buttons |= sdl_button_map_sbc[i][1];
+        for (int i = 0; i < 43; i++) {
+            if(sdl_button_map_sbc[i][0] != -1) {
+                if (SDL_GameControllerGetButton(state->sdl_gamecontroller,
+                                                sdl_button_map_sbc[i][0]))
+                    state->sbc.buttons |= sdl_button_map_sbc[i][1];
+            }
         }
 
         const uint64_t toggles[5] = { SBC_BUTTON_FILT_CONTROL_SYSTEM,
@@ -855,37 +892,42 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
             }
         }
 
-        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTX);
-        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTY);
-        state->sbc.axis[SBC_AXIS_AIMING_X] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_RIGHTX);
-        state->sbc.axis[SBC_AXIS_AIMING_Y] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_RIGHTY);
-        state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-        state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+        int sdl_axis_map_sbc[SBC_AXIS__COUNT] = {
+            g_config.input.sbc_binding_map.aiming_x,
+            g_config.input.sbc_binding_map.aiming_y,
+            g_config.input.sbc_binding_map.rotation,
+            g_config.input.sbc_binding_map.left_pedal,
+            g_config.input.sbc_binding_map.middle_pedal,
+            g_config.input.sbc_binding_map.right_pedal,
+            g_config.input.sbc_binding_map.sight_change_x,
+            g_config.input.sbc_binding_map.sight_change_y
+        };
 
+        for(int i = 0; i < SBC_AXIS__COUNT; i++) {
+            if(sdl_axis_map_sbc[i] != -1) {
+                state->sbc.axis[i] = SDL_GameControllerGetAxis(
+                    state->sdl_gamecontroller, sdl_axis_map_sbc[i]);
+            }
+        }
+        
         state->sbc.previousButtons = state->sbc.buttons;
     } else {
         const SDL_GameControllerButton sdl_button_map[15] = {
-            SDL_CONTROLLER_BUTTON_A,
-            SDL_CONTROLLER_BUTTON_B,
-            SDL_CONTROLLER_BUTTON_X,
-            SDL_CONTROLLER_BUTTON_Y,
-            SDL_CONTROLLER_BUTTON_DPAD_LEFT,
-            SDL_CONTROLLER_BUTTON_DPAD_UP,
-            SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
-            SDL_CONTROLLER_BUTTON_DPAD_DOWN,
-            SDL_CONTROLLER_BUTTON_BACK,
-            SDL_CONTROLLER_BUTTON_START,
-            SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
-            SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
-            SDL_CONTROLLER_BUTTON_LEFTSTICK,
-            SDL_CONTROLLER_BUTTON_RIGHTSTICK,
-            SDL_CONTROLLER_BUTTON_GUIDE
+            g_config.input.gamepad_binding_map.a,
+            g_config.input.gamepad_binding_map.b,
+            g_config.input.gamepad_binding_map.x,
+            g_config.input.gamepad_binding_map.y,
+            g_config.input.gamepad_binding_map.dpad_left,
+            g_config.input.gamepad_binding_map.dpad_up,
+            g_config.input.gamepad_binding_map.dpad_right,
+            g_config.input.gamepad_binding_map.dpad_down,
+            g_config.input.gamepad_binding_map.back,
+            g_config.input.gamepad_binding_map.start,
+            g_config.input.gamepad_binding_map.white,
+            g_config.input.gamepad_binding_map.black,
+            g_config.input.gamepad_binding_map.left_stick,
+            g_config.input.gamepad_binding_map.right_stick,
+            g_config.input.gamepad_binding_map.guide
         };
 
         for (int i = 0; i < 15; i++) {
@@ -894,21 +936,23 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
         }
 
         const SDL_GameControllerAxis sdl_axis_map[6] = {
-            SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_CONTROLLER_AXIS_TRIGGERRIGHT,
-            SDL_CONTROLLER_AXIS_LEFTX,       SDL_CONTROLLER_AXIS_LEFTY,
-            SDL_CONTROLLER_AXIS_RIGHTX,      SDL_CONTROLLER_AXIS_RIGHTY,
+            g_config.input.gamepad_binding_map.left_trigger, g_config.input.gamepad_binding_map.right_trigger,
+            g_config.input.gamepad_binding_map.left_stick_x, g_config.input.gamepad_binding_map.left_stick_y,
+            g_config.input.gamepad_binding_map.right_stick_x, g_config.input.gamepad_binding_map.right_stick_y
         };
 
         for (int i = 0; i < 6; i++) {
-            state->gp.axis[i] = 
-                SDL_GameControllerGetAxis(state->sdl_gamecontroller, sdl_axis_map[i]);
+            if(sdl_axis_map[i] != -1) {
+                state->gp.axis[i] = 
+                    SDL_GameControllerGetAxis(state->sdl_gamecontroller, sdl_axis_map[i]);
+            }
         }
 
         // FIXME: Check range
-        state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] = 
-            -1 - state->gp.axis[CONTROLLER_AXIS_LSTICK_Y];
-        state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] = 
-            -1 - state->gp.axis[CONTROLLER_AXIS_RSTICK_Y];
+        state->gp.axis[g_config.input.gamepad_binding_map.left_stick_y] = 
+            -1 - state->gp.axis[g_config.input.gamepad_binding_map.left_stick_y];
+        state->gp.axis[g_config.input.gamepad_binding_map.right_stick_y] = 
+            -1 - state->gp.axis[g_config.input.gamepad_binding_map.right_stick_y];
 
         // xemu_input_print_controller_state(state);
     }

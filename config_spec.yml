@@ -284,6 +284,228 @@ input:
     middle_pedal:
       type: integer
       default: 22 # s
+  gamepad_binding_map:
+    a: 
+      type: integer
+      default: 0 # SDL_CONTROLLER_BUTTON_A
+    b: 
+      type: integer
+      default: 1 # SDL_CONTROLLER_BUTTON_B
+    x:
+      type: integer
+      default: 2 # SDL_CONTROLLER_BUTTON_X
+    y:
+      type: integer
+      default: 3 # SDL_CONTROLLER_BUTTON_Y
+    dpad_left:
+      type: integer
+      default: 13 # SDL_CONTROLLER_BUTTON_DPAD_LEFT
+    dpad_up:
+      type: integer
+      default: 11 # SDL_CONTROLLER_BUTTON_DPAD_UP
+    dpad_right:
+      type: integer
+      default: 14 # SDL_CONTROLLER_BUTTON_DPAD_RIGHT
+    dpad_down:
+      type: integer
+      default: 12 # SDL_CONTROLLER_BUTTON_DPAD_DOWN
+    back:
+      type: integer
+      default: 4 # SDL_CONTROLLER_BUTTON_BACK
+    start:
+      type: integer
+      default: 6 # SDL_CONTROLLER_BUTTON_START
+    white:
+      type: integer
+      default: 9 # SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
+    black:
+      type: integer
+      default: 10 # SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
+    left_stick:
+      type: integer
+      default: 7 # SDL_CONTROLLER_BUTTON_LEFTSTICK
+    right_stick:
+      type: integer
+      default: 8 # SDL_CONTROLLER_BUTTON_RIGHTSTICK
+    guide:
+      type: integer
+      default: 5 # SDL_CONTROLLER_BUTTON_GUIDE
+     
+    #analog axes
+    left_stick_x:
+      type: integer
+      default: 0 # SDL_CONTROLLER_AXIS_LEFTX
+    left_stick_y:
+      type: integer
+      default: 1 # SDL_CONTROLLER_AXIS_LEFTY
+    right_stick_x:
+      type: integer
+      default: 2 # SDL_CONTROLLER_AXIS_RIGHTX
+    right_stick_y:
+      type: integer
+      default: 3 # SDL_CONTROLLER_AXIS_RIGHTY
+    left_trigger:
+      type: integer
+      default: 4 # SDL_CONTROLLER_AXIS_TRIGGERLEFT
+    right_trigger:
+      type: integer
+      default: 5 # SDL_CONTROLLER_AXIS_TRIGGERRIGHT
+
+  sbc_binding_map:
+    main_weapon:
+      type: integer
+      default: 0 # SDL_CONTROLLER_BUTTON_A
+    lock_on:
+      type: integer
+      default: 1 # SDL_CONTROLLER_BUTTON_B
+    sub_weapon:
+      type: integer
+      default: -1
+    eject:
+      type: integer
+      default: -1
+    cockpit_hatch:
+      type: integer
+      default: -1
+    ignition:
+      type: integer
+      default: -1
+    start:
+      type: integer
+      default: -1
+    open_close:
+      type: integer
+      default: -1
+    map_zoom_in_out:
+      type: integer
+      default: -1
+    mode_select:
+      type: integer
+      default: -1
+    sub_monitor_mode_select:
+      type: integer
+      default: -1
+    zoom_in:
+      type: integer
+      default: -1
+    zoom_out:
+      type: integer
+      default: -1
+    fss:
+      type: integer
+      default: -1
+    manipulator:
+      type: integer
+      default: -1
+    line_color_change:
+      type: integer
+      default: -1
+    washing:
+      type: integer
+      default: -1
+    extinguisher:
+      type: integer
+      default: -1
+    chaff:
+      type: integer
+      default: -1
+    tank_detach:
+      type: integer
+      default: -1
+    override:
+      type: integer
+      default: -1
+    night_scope:
+      type: integer
+      default: -1
+    func1:
+      type: integer
+      default: 9 # SDL_CONTROLLER_BUTTON_LEFTSHOULDER
+    func2:
+      type: integer
+      default: -1
+    func3:
+      type: integer
+      default: -1
+    main_weapon_control:
+      type: integer
+      default: -1
+    sub_weapon_control:
+      type: integer
+      default: -1
+    magazine_change:
+      type: integer
+      default: -1
+    com1:
+      type: integer
+      default: -1
+    com2:
+      type: integer
+      default: -1
+    com3:
+      type: integer
+      default: -1
+    com4:
+      type: integer
+      default: -1
+    com5:
+      type: integer
+      default: -1
+    sight_change:
+      type: integer
+      default: 7 # SDL_CONTROLLER_BUTTON_LEFTSTICK
+    filt_control_system:
+      type: integer
+      default: -1
+    oxygen_supply_system:
+      type: integer
+      default: -1
+    fuel_flow_rate:
+      type: integer
+      default: -1
+    buffer_material:
+      type: integer
+      default: -1
+    vt_location_measurement:
+      type: integer
+      default: -1
+    gear_up:
+      type: integer
+      default: 11 # SDL_CONTROLLER_BUTTON_DPAD_UP
+    gear_down:
+      type: integer
+      default: 12 # SDL_CONTROLLER_BUTTON_DPAD_DOWN
+    tuner_left:
+      type: integer
+      default: 13 # SDL_CONTROLLER_BUTTON_DPAD_LEFT
+    tuner_right:
+      type: integer
+      default: 14 # SDL_CONTROLLER_BUTTON_DPAD_RIGHT
+    # axes
+    sight_change_x:
+      type: integer
+      default: 0 # SDL_CONTROLLER_AXIS_LEFTX
+    sight_change_y:
+      type: integer
+      default: 1 # SDL_CONTROLLER_AXIS_LEFTY
+    rotation:
+      type: integer
+      default: -1
+    aiming_x:
+      type: integer
+      default: 2 # SDL_CONTROLLER_AXIS_RIGHTX
+    aiming_y:
+      type: integer
+      default: 3 # SDL_CONTROLLER_AXIS_RIGHTY
+    right_pedal:
+      type: integer
+      default: 5 # SDL_CONTROLLER_AXIS_TRIGGERRIGHT
+    middle_pedal:
+      type: integer
+      default: 4 # SDL_CONTROLLER_AXIS_TRIGGERLEFT
+    left_pedal:
+      type: integer
+      default: -1
 
 display:
   renderer:
