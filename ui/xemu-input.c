@@ -38,6 +38,8 @@
 extern SDL_Window *m_window;
 extern int viewport_coords[4];
 
+#define SBC_PEDAL_MAX 0xFFC0
+
 // #define DEBUG_INPUT
 
 #ifdef DEBUG_INPUT
@@ -728,11 +730,11 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
             state->sbc.axis[SBC_AXIS_ROTATION_LEVER] = 32767;
 
         if (kbd[sdl_sbc_kbd_scancode_map[49]])
-            state->sbc.axis[SBC_AXIS_LEFT_PEDAL] = 32767;
+            state->sbc.axis[SBC_AXIS_LEFT_PEDAL] = SBC_PEDAL_MAX;
         if (kbd[sdl_sbc_kbd_scancode_map[50]])
-            state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = 32767;
+            state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = SBC_PEDAL_MAX;
         if (kbd[sdl_sbc_kbd_scancode_map[51]])
-            state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = 32767;
+            state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = SBC_PEDAL_MAX;
 
         state->sbc.previousButtons = state->sbc.buttons;
     } else {

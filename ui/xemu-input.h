@@ -173,7 +173,7 @@ typedef struct GamepadState {
 typedef struct SteelBattalionState {
     uint64_t buttons;
     uint64_t previousButtons;
-    int16_t axis[SBC_AXIS__COUNT];
+    uint16_t axis[SBC_AXIS__COUNT];
     uint8_t gearLever;
     uint8_t tunerDial;
     uint8_t toggleSwitches;
