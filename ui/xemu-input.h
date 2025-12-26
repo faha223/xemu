@@ -30,6 +30,8 @@
 
 #include "qemu/queue.h"
 #include "hw/usb-passthrough.h"
+#include "xemu-settings.h"
+#include <SDL2/SDL.h>
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
@@ -141,6 +143,11 @@ enum steel_battalion_state_axis_index {
     SBC_AXIS_SIGHT_CHANGE_Y,
     SBC_AXIS__COUNT
 };
+#ifdef __cplusplus
+using GamepadMappings = struct config::input::gamepad_mappings;
+#else
+typedef struct gamepad_mappings GamepadMappings;
+#endif
 
 enum controller_input_device_type {
     INPUT_DEVICE_SDL_KEYBOARD,
@@ -166,7 +173,6 @@ typedef struct GamepadState {
     uint32_t animate_trigger_end;
 
     // Rumble state
-    bool rumble_enabled;
     uint16_t rumble_l, rumble_r;
 } GamepadState;
 
@@ -197,6 +203,8 @@ typedef struct ControllerState {
 
     enum peripheral_type peripheral_types[2];
     void *peripherals[2];
+
+    GamepadMappings *controller_map;
 
     int   bound;  // Which port this input device is bound to
     void *device; // DeviceState opaque
@@ -234,6 +242,7 @@ int xemu_input_get_libusb_device_default_bind_port(LibusbDevice *device, int sta
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
+void xemu_input_reset_input_mapping(ControllerState *state);
 
 #ifdef __cplusplus
 }
