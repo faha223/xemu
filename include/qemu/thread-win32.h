@@ -3,12 +3,6 @@
 
 #include <windows.h>
 
-typedef struct QemuThreadData QemuThreadData;
-struct QemuThread {
-    QemuThreadData *data;
-    unsigned tid;
-};
-
 struct QemuMutex {
     SRWLOCK lock;
 #ifdef CONFIG_DEBUG_MUTEX
@@ -35,10 +29,10 @@ struct QemuSemaphore {
     bool initialized;
 };
 
-struct QemuEvent {
-    int value;
-    HANDLE event;
-    bool initialized;
+typedef struct QemuThreadData QemuThreadData;
+struct QemuThread {
+    QemuThreadData *data;
+    unsigned tid;
 };
 
 /* Only valid for joinable threads.  */

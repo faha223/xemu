@@ -4,10 +4,6 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-struct QemuThread {
-    pthread_t thread;
-};
-
 struct QemuMutex {
     pthread_mutex_t lock;
 #ifdef CONFIG_DEBUG_MUTEX
@@ -40,13 +36,8 @@ struct QemuSemaphore {
     unsigned int count;
 };
 
-struct QemuEvent {
-#ifndef __linux__
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
-#endif
-    unsigned value;
-    bool initialized;
+struct QemuThread {
+    pthread_t thread;
 };
 
 #endif

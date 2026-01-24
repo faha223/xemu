@@ -279,7 +279,7 @@ static void usb_xid_steel_battalion_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
-static void usb_xid_steel_battalion_class_initfn(ObjectClass *klass, void *data)
+static void usb_xid_steel_battalion_class_initfn(ObjectClass *klass, const void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
@@ -314,9 +314,8 @@ static void usb_steel_battalion_realize(USBDevice *dev, Error **errp)
     s->out_state_capabilities.report_id = 0;
 }
 
-static Property xid_properties[] = {
+static const Property xid_properties[] = {
     DEFINE_PROP_UINT8("index", USBXIDSteelBattalionState, device_index, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription vmstate_usb_sb = {
@@ -329,7 +328,7 @@ static const VMStateDescription vmstate_usb_sb = {
                           VMSTATE_END_OF_LIST() },
 };
 
-static void usb_steel_battalion_class_initfn(ObjectClass *klass, void *data)
+static void usb_steel_battalion_class_initfn(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
