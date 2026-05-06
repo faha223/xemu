@@ -997,6 +997,9 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
                     state->sbc.gearLever--;
             }
         }
+#define SDL_GET_AXIS(state, axis)    \
+    SDL_GetGamepadAxis(              \
+        (state)->sdl_gamepad, axis)
 
         int sdl_axis_map_sbc[SBC_AXIS__COUNT] = {
             g_config.input.sbc_binding_map.aiming_x,

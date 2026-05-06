@@ -279,7 +279,7 @@ static void usb_xid_steel_battalion_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
-static void usb_xid_steel_battalion_class_initfn(ObjectClass *klass, const void *data)
+static void usb_xid_steel_battalion_class_init(ObjectClass *klass, const void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
@@ -328,7 +328,7 @@ static const VMStateDescription vmstate_usb_sb = {
                           VMSTATE_END_OF_LIST() },
 };
 
-static void usb_steel_battalion_class_initfn(ObjectClass *klass, const void *data)
+static void usb_steel_battalion_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -337,7 +337,7 @@ static void usb_steel_battalion_class_initfn(ObjectClass *klass, const void *dat
     uc->usb_desc = &desc_xbox_steel_battalion;
     uc->realize = usb_steel_battalion_realize;
     uc->unrealize = usb_xbox_gamepad_unrealize;
-    usb_xid_steel_battalion_class_initfn(klass, data);
+    usb_xid_steel_battalion_class_init(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd = &vmstate_usb_sb;
     device_class_set_props(dc, xid_properties);
@@ -348,7 +348,7 @@ static const TypeInfo usb_steel_battalion_info = {
     .name = TYPE_USB_XID_STEEL_BATTALION,
     .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXIDSteelBattalionState),
-    .class_init = usb_steel_battalion_class_initfn,
+    .class_init = usb_steel_battalion_class_init,
 };
 
 static void usb_xid_register_types(void)
