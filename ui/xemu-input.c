@@ -1080,7 +1080,6 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
 // FIXME: Check range
 #define INVERT_AXIS(controller_axis) \
     state->gp.axis[controller_axis] = -1 - state->gp.axis[controller_axis]
-    state->gp.axis[controller_axis] = -1 - state->gp.axis[controller_axis]
 
         if (state->controller_map->controller_mapping.invert_axis_left_x) {
             INVERT_AXIS(CONTROLLER_AXIS_LSTICK_X);
@@ -1113,7 +1112,6 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
 #undef INVERT_AXIS
 
     // xemu_input_print_controller_state(state);
-    }
     }
 }
 
