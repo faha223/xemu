@@ -228,7 +228,6 @@ void MainMenuInputView::Draw()
         const char *driver_display_names[] = { 
             DRIVER_DUKE_DISPLAY_NAME, 
             DRIVER_S_DISPLAY_NAME, 
-            DRIVER_STEEL_BATTALION_DISPLAY_NAME, 
 #ifdef CONFIG_USB_LIBUSB
             DRIVER_USB_PASSTHROUGH_DISPLAY_NAME
 #endif
@@ -430,11 +429,10 @@ void MainMenuInputView::Draw()
     ImGui::SetCursorPos(pos);
 
     if (bound_state) {
+        ImGui::PushID(active);
         bool hasInternalHub =
             strcmp(bound_drivers[active], DRIVER_STEEL_BATTALION) != 0;
         if (hasInternalHub) {
-            ImGui::PushID(active);
-
             SectionTitle("Expansion Slots");
             // Begin a 2-column layout to render the expansion slots
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -444,29 +442,29 @@ void MainMenuInputView::Draw()
             xmu_fbo->Target();
             id = (ImTextureID)(intptr_t)xmu_fbo->Texture();
 
-            static const SDL_DialogFileFilter img_file_filters[] = {
-                { ".img Files", "img" },
-                { "All Files", "*" }
-            };
-            const char *comboLabels[2] = { "###ExpansionSlotA",
-                                           "###ExpansionSlotB" };
-            for (int i = 0; i < 2; i++) {
-                // Display a combo box to allow the user to choose the type of
-                // peripheral they want to use
-                enum peripheral_type selected_type =
-                    bound_state->peripheral_types[i];
-                const char *peripheral_type_names[2] = { "None", "Memory Unit" };
-                const char *selected_peripheral_type =
-                    peripheral_type_names[selected_type];
-                ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::BeginCombo(comboLabels[i], selected_peripheral_type,
-                                    ImGuiComboFlags_NoArrowButton)) {
-                    // Handle all available peripheral types
-                    for (int j = 0; j < 2; j++) {
-                        bool is_selected = selected_type == j;
-                        ImGui::PushID(j);
-                        const char *selectable_label = peripheral_type_names[j];
 
+        static const SDL_DialogFileFilter img_file_filters[] = {
+            { ".img Files", "img" },
+            { "All Files", "*" }
+        };
+        const char *comboLabels[2] = { "###ExpansionSlotA",
+                                       "###ExpansionSlotB" };
+        for (int i = 0; i < 2; i++) {
+            // Display a combo box to allow the user to choose the type of
+            // peripheral they want to use
+            enum peripheral_type selected_type =
+                bound_state->peripheral_types[i];
+            const char *peripheral_type_names[2] = { "None", "Memory Unit" };
+            const char *selected_peripheral_type =
+                peripheral_type_names[selected_type];
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo(comboLabels[i], selected_peripheral_type,
+                                  ImGuiComboFlags_NoArrowButton)) {
+                // Handle all available peripheral types
+                for (int j = 0; j < 2; j++) {
+                    bool is_selected = selected_type == j;
+                    ImGui::PushID(j);
+                    const char *selectable_label = peripheral_type_names[j];
 
                         if (ImGui::Selectable(selectable_label, is_selected)) {
                             // Free any existing peripheral
@@ -549,38 +547,41 @@ void MainMenuInputView::Draw()
                     ImGui::Image(id, xmu_display_size, ImVec2(0.5f * i, 1),
                                 ImVec2(0.5f * (i + 1), 0));
 
-                    // Button to generate a new XMU
-                    ImGui::PushID(i);
-                    if (ImGui::Button("New Image", ImVec2(250, 0))) {
-                        int port = active;
-                        int slot = i;
-                        ShowSaveFileDialog(img_file_filters, 2, nullptr, [port, slot](const char *new_path) {
-                            if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
-                                // XMU was created successfully. Bind it
-                                xemu_input_bind_xmu(port, slot, new_path, false);
-                            } else {
-                                // Show alert message
-                                char *msg = g_strdup_printf(
-                                    "Unable to create XMU image at %s", new_path);
-                                xemu_queue_error_message(msg);
-                                g_free(msg);
-                            }
-                        });
-                    }
 
+                // Button to generate a new XMU
+                ImGui::PushID(i);
+                if (ImGui::Button("New Image", ImVec2(250, 0))) {
                     int port = active;
                     int slot = i;
-                    FilePicker("Image", xmu->filename, img_file_filters, 2, false,
-                            [port, slot](const char *path) {
-                                if (strlen(path) > 0) {
-                                    xemu_input_bind_xmu(port, slot, path, false);
-                                } else {
-                                    xemu_input_unbind_xmu(port, slot);
-                                }
-                            });
+                    ShowSaveFileDialog(img_file_filters, 2, nullptr, [port, slot](const char *new_path) {
+                        if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
+                            // XMU was created successfully. Bind it
+                            xemu_input_bind_xmu(port, slot, new_path, false);
+                        } else {
+                            // Show alert message
+                            char *msg = g_strdup_printf(
+                                "Unable to create XMU image at %s", new_path);
+                            xemu_queue_error_message(msg);
+                            g_free(msg);
+                        }
+                    });
+                }
+
+                int port = active;
+                int slot = i;
+                FilePicker("Image", xmu->filename, img_file_filters, 2, false,
+                           [port, slot](const char *path) {
+                               if (strlen(path) > 0) {
+                                   xemu_input_bind_xmu(port, slot, path, false);
+                               } else {
+                                   xemu_input_unbind_xmu(port, slot);
+                               }
+                           });
 
                     ImGui::PopID();
                 }
+
+                ImGui::NextColumn();
             }
 
             xmu_fbo->Restore();

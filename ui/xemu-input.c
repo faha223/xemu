@@ -137,6 +137,7 @@ static const char **peripheral_params_settings_map[4][2] = {
 };
 
 static int sdl_sbc_kbd_scancode_map[52];
+
 int *g_keyboard_scancode_map[25] = {
     &g_config.input.keyboard_controller_scancode_map.a,
     &g_config.input.keyboard_controller_scancode_map.b,
@@ -825,6 +826,7 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 
         state->sbc.previousButtons = state->sbc.buttons;
     } else {
+
 #define KBD_STATE(btn) \
         (kbd[g_config.input.keyboard_controller_scancode_map.btn])
 
@@ -865,7 +867,6 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
             state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
         if (KBD_STATE(rtrigger))
             state->gp.axis[CONTROLLER_AXIS_RTRIG] = 32767;
-
 #undef KBD_STATE
     }
 }
@@ -1038,8 +1039,23 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
         state->gp.buttons |= SDL_MASK_BUTTON(state, lstick_btn, 12);
         state->gp.buttons |= SDL_MASK_BUTTON(state, rstick_btn, 13);
         state->gp.buttons |= SDL_MASK_BUTTON(state, guide, 14);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, a, 0);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, b, 1);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, x, 2);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, y, 3);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, dpad_left, 4);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, dpad_up, 5);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, dpad_right, 6);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, dpad_down, 7);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, back, 8);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, start, 9);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, lshoulder, 10);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, rshoulder, 11);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, lstick_btn, 12);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, rstick_btn, 13);
+        state->gp.buttons |= SDL_MASK_BUTTON(state, guide, 14);
 
-#undef SDL_MASK_BUTTON
+    #undef SDL_MASK_BUTTON
 
 #define SDL_GET_AXIS(state, axis)    \
     SDL_GetGamepadAxis(              \
@@ -1052,13 +1068,23 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
         state->gp.axis[3] = SDL_GET_AXIS(state, axis_left_y);
         state->gp.axis[4] = SDL_GET_AXIS(state, axis_right_x);
         state->gp.axis[5] = SDL_GET_AXIS(state, axis_right_y);
+        state->gp.axis[0] = SDL_GET_AXIS(state, axis_trigger_left);
+        state->gp.axis[1] = SDL_GET_AXIS(state, axis_trigger_right);
+        state->gp.axis[2] = SDL_GET_AXIS(state, axis_left_x);
+        state->gp.axis[3] = SDL_GET_AXIS(state, axis_left_y);
+        state->gp.axis[4] = SDL_GET_AXIS(state, axis_right_x);
+        state->gp.axis[5] = SDL_GET_AXIS(state, axis_right_y);
 
 #undef SDL_GET_AXIS
 
 // FIXME: Check range
 #define INVERT_AXIS(controller_axis) \
     state->gp.axis[controller_axis] = -1 - state->gp.axis[controller_axis]
+    state->gp.axis[controller_axis] = -1 - state->gp.axis[controller_axis]
 
+        if (state->controller_map->controller_mapping.invert_axis_left_x) {
+            INVERT_AXIS(CONTROLLER_AXIS_LSTICK_X);
+        }
         if (state->controller_map->controller_mapping.invert_axis_left_x) {
             INVERT_AXIS(CONTROLLER_AXIS_LSTICK_X);
         }
@@ -1066,7 +1092,13 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
         if (!state->controller_map->controller_mapping.invert_axis_left_y) {
             INVERT_AXIS(CONTROLLER_AXIS_LSTICK_Y);
         }
+        if (!state->controller_map->controller_mapping.invert_axis_left_y) {
+            INVERT_AXIS(CONTROLLER_AXIS_LSTICK_Y);
+        }
 
+        if (state->controller_map->controller_mapping.invert_axis_right_x) {
+            INVERT_AXIS(CONTROLLER_AXIS_RSTICK_X);
+        }
         if (state->controller_map->controller_mapping.invert_axis_right_x) {
             INVERT_AXIS(CONTROLLER_AXIS_RSTICK_X);
         }
@@ -1074,10 +1106,14 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
         if (!state->controller_map->controller_mapping.invert_axis_right_y) {
             INVERT_AXIS(CONTROLLER_AXIS_RSTICK_Y);
         }
+        if (!state->controller_map->controller_mapping.invert_axis_right_y) {
+            INVERT_AXIS(CONTROLLER_AXIS_RSTICK_Y);
+        }
 
 #undef INVERT_AXIS
 
     // xemu_input_print_controller_state(state);
+    }
     }
 }
 
@@ -1097,6 +1133,7 @@ void xemu_input_update_rumble(ControllerState *state)
         return;
     }
 
+    SDL_RumbleGamepad(state->sdl_gamepad, state->gp.rumble_l, state->gp.rumble_r, 250);
     SDL_RumbleGamepad(state->sdl_gamepad, state->gp.rumble_l, state->gp.rumble_r, 250);
     state->last_rumble_updated_ts = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
 }
