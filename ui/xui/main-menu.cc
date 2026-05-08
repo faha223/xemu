@@ -228,6 +228,7 @@ void MainMenuInputView::Draw()
         const char *driver_display_names[] = { 
             DRIVER_DUKE_DISPLAY_NAME, 
             DRIVER_S_DISPLAY_NAME, 
+            DRIVER_STEEL_BATTALION_DISPLAY_NAME,
 #ifdef CONFIG_USB_LIBUSB
             DRIVER_USB_PASSTHROUGH_DISPLAY_NAME
 #endif
