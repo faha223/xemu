@@ -45,6 +45,8 @@
     do { } while (0)
 #endif
 
+#define SBC_PEDAL_MAX 0xFFC0
+
 #define XEMU_INPUT_MIN_INPUT_UPDATE_INTERVAL_US  2500
 #define XEMU_INPUT_MIN_RUMBLE_UPDATE_INTERVAL_US 2500
 
@@ -733,11 +735,11 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
         state->sbc.axis[SBC_AXIS_ROTATION_LEVER] = 32767;
 
     if (kbd[sdl_sbc_kbd_scancode_map[53]])
-        state->sbc.axis[SBC_AXIS_LEFT_PEDAL] = 32767;
+        state->sbc.axis[SBC_AXIS_LEFT_PEDAL] = SBC_PEDAL_MAX;
     if (kbd[sdl_sbc_kbd_scancode_map[54]])
-        state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = 32767;
+        state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = SBC_PEDAL_MAX;
     if (kbd[sdl_sbc_kbd_scancode_map[55]])
-        state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = 32767;
+        state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = SBC_PEDAL_MAX;
 
     state->sbc.previousButtons = state->sbc.buttons;
 }
