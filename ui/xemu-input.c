@@ -35,7 +35,10 @@
 
 #include "sysemu/blockdev.h"
 
-// #define DEBUG_INPUT
+extern SDL_Window *m_window;
+extern int viewport_coords[4];
+
+#define DEBUG_INPUT
 
 #ifdef DEBUG_INPUT
 #define DPRINTF(fmt, ...) \
@@ -711,14 +714,66 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
     }
 
     // Update SBC Axes
-    if (kbd[sdl_sbc_kbd_scancode_map[43]])
-        state->sbc.axis[SBC_AXIS_AIMING_Y] = -32768;
-    if (kbd[sdl_sbc_kbd_scancode_map[44]])
-        state->sbc.axis[SBC_AXIS_AIMING_Y] = 32767;
-    if (kbd[sdl_sbc_kbd_scancode_map[45]])
-        state->sbc.axis[SBC_AXIS_AIMING_X] = -32768;
-    if (kbd[sdl_sbc_kbd_scancode_map[46]])
-        state->sbc.axis[SBC_AXIS_AIMING_X] = 32767;
+    //if (kbd[sdl_sbc_kbd_scancode_map[43]])
+    //    state->sbc.axis[SBC_AXIS_AIMING_Y] = -32768;
+    //if (kbd[sdl_sbc_kbd_scancode_map[44]])
+    //    state->sbc.axis[SBC_AXIS_AIMING_Y] = 32767;
+    //if (kbd[sdl_sbc_kbd_scancode_map[45]])
+    //    state->sbc.axis[SBC_AXIS_AIMING_X] = -32768;
+    //if (kbd[sdl_sbc_kbd_scancode_map[46]])
+    //    state->sbc.axis[SBC_AXIS_AIMING_X] = 32767;
+    int mouseX, mouseY;
+    uint32_t mouseBtn = SDL_GetMouseState(&mouseX, &mouseY);
+
+    if (mouseBtn & SDL_BUTTON_LMASK) {
+        state->sbc.buttons |= SBC_BUTTON_MAIN_WEAPON;
+    }
+    if (mouseBtn & SDL_BUTTON_RMASK) {
+        state->sbc.buttons |= SBC_BUTTON_LOCK_ON;
+    }
+    if(mouseBtn & SDL_BUTTON_X1MASK ||
+        mouseBtn & SDL_BUTTON_X2MASK) {
+        state->sbc.buttons |= SBC_BUTTON_SUB_WEAPON;
+    }
+
+    int32_t windowWidth, windowHeight;
+    SDL_GetWindowSizeInPixels(
+        m_window, &windowWidth,
+        &windowHeight); // get the mouse location relative to the Viewport,
+                        // not the Window
+
+    // Calculate the position of the mouse coordinates in [-32768,32767]
+    DPRINTF("[Steel Battalion] Window Coordinates: %d, %d\n", mouseX, mouseY);
+
+    // Check that the mouse position is within the window coordinates
+    if (mouseX >= 0 && mouseX <= windowWidth && mouseY >= 0 &&
+        mouseY <= windowHeight) {
+        if (viewport_coords[2] > 0 && viewport_coords[3] > 0) {
+            // Switch from Window coordinates to Viewport Coordinates
+            mouseX -= viewport_coords[0];
+            mouseY -= viewport_coords[1];
+            windowWidth = viewport_coords[2];
+            windowHeight = viewport_coords[3];
+        }
+        DPRINTF("[Steel Battalion] Window Size: %d, %d\n", windowWidth, windowHeight);
+
+        int32_t x = mouseX - (windowWidth / 2);
+        int32_t y = mouseY - (windowHeight / 2);
+        DPRINTF("[Steel Battalion] Viewport Coordinates: %d, %d\n", x, y);
+        
+        x = (int32_t)(x * 65535.0 / windowWidth);
+        y = (int32_t)(y * 65535.0 / windowHeight);
+        DPRINTF("[Steel Battalion] Aiming Lever Unclampled: %d, %d\n", x, y);
+
+        state->sbc.axis[SBC_AXIS_AIMING_X] = 
+            (int16_t)MIN(MAX(x, -32768), 32767);
+        state->sbc.axis[SBC_AXIS_AIMING_Y] = 
+            (int16_t)MIN(MAX(y, -32768), 32767);
+
+        DPRINTF("[Steel Battalion] Aiming Lever Clamped: %d, %d\n", 
+                state->sbc.axis[SBC_AXIS_AIMING_X], 
+                state->sbc.axis[SBC_AXIS_AIMING_Y]);
+    }
 
     if (kbd[sdl_sbc_kbd_scancode_map[47]])
         state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = -32768;

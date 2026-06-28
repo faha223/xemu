@@ -984,8 +984,8 @@ void RenderController_SteelBattalion(float frame_x, float frame_y,
     float h = sb_tex_items[obj_sight_change_stick].h;
     float c_x = frame_x + sight_change_ctr.x;
     float c_y = frame_y + sight_change_ctr.y;
-    float scstick_x = (float)state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] / 32768.0;
-    float scstick_y = (float)state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] / 32768.0;
+    float scstick_x = (float)(*(int16_t*)&state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X]) / 32768.0f;
+    float scstick_y = (float)(*(int16_t*)&state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y]) / 32768.0f;
     RenderDecal(
         g_decal_shader, (int)(c_x - w / 2.0f + 5.0f * scstick_x),
         (int)(c_y - h / 2.0f - 5.0f * scstick_y), w, h,
@@ -1013,8 +1013,8 @@ void RenderController_SteelBattalion(float frame_x, float frame_y,
     h = sb_tex_items[obj_right_stick].h;
     c_x = frame_x + rstick_ctr.x;
     c_y = frame_y + rstick_ctr.y;
-    float rstick_x = (float)state->sbc.axis[SBC_AXIS_AIMING_X] / 32768.0;
-    float rstick_y = (float)state->sbc.axis[SBC_AXIS_AIMING_Y] / 32768.0;
+    float rstick_x = (float)(*(int16_t*)&state->sbc.axis[SBC_AXIS_AIMING_X]) / 32768.0f;
+    float rstick_y = (float)(*(int16_t*)&state->sbc.axis[SBC_AXIS_AIMING_Y]) / 32768.0f;
     RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 23.0f * rstick_x),
                 (int)(c_y - h / 2.0f - 20.0f * rstick_y), w, h,
                 sb_tex_items[obj_right_stick].x,
