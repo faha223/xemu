@@ -1087,26 +1087,11 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
         if (state->controller_map->controller_mapping.invert_axis_left_x) {
             INVERT_AXIS(CONTROLLER_AXIS_LSTICK_X);
         }
-        if (state->controller_map->controller_mapping.invert_axis_left_x) {
-            INVERT_AXIS(CONTROLLER_AXIS_LSTICK_X);
-        }
-
         if (!state->controller_map->controller_mapping.invert_axis_left_y) {
             INVERT_AXIS(CONTROLLER_AXIS_LSTICK_Y);
         }
-        if (!state->controller_map->controller_mapping.invert_axis_left_y) {
-            INVERT_AXIS(CONTROLLER_AXIS_LSTICK_Y);
-        }
-
         if (state->controller_map->controller_mapping.invert_axis_right_x) {
             INVERT_AXIS(CONTROLLER_AXIS_RSTICK_X);
-        }
-        if (state->controller_map->controller_mapping.invert_axis_right_x) {
-            INVERT_AXIS(CONTROLLER_AXIS_RSTICK_X);
-        }
-
-        if (!state->controller_map->controller_mapping.invert_axis_right_y) {
-            INVERT_AXIS(CONTROLLER_AXIS_RSTICK_Y);
         }
         if (!state->controller_map->controller_mapping.invert_axis_right_y) {
             INVERT_AXIS(CONTROLLER_AXIS_RSTICK_Y);
